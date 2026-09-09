@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import './App.css'
+import MapSelector from './MapSelector'
 
 const routeOptions = [
   {
@@ -25,6 +26,17 @@ function App() {
   const [routeType, setRouteType] = useState('balanced')
   const [safetyLevel, setSafetyLevel] = useState(60)
   const [message, setMessage] = useState('')
+  const [showMap, setShowMap] = useState(false)
+
+  const handleMapSelect = (target, coordinates) => {
+    if (target === 'start') {
+      setStart(coordinates)
+    } else {
+      setDestination(coordinates)
+    }
+
+  setMessage('')
+  }
 
   const swapLocations = () => {
     setStart(destination)
@@ -139,7 +151,27 @@ function App() {
               />
             </div>
           </div>
+          
+          <button
+            type="button"
+            className="map-toggle-button"
+            aria-expanded={showMap}
+            aria-controls="location-map-panel"
+            onClick={() => setShowMap((previous) => !previous)}
+          >
+            {showMap ? '지도 닫기' : '지도에서 위치 선택'}
+          </button>
 
+          <div id="location-map-panel">
+            {showMap && (
+              <MapSelector
+                start={start}
+                destination={destination}
+                onSelect={handleMapSelect}
+              />
+            )}
+          </div>
+          
           <fieldset>
             <legend>경로 추천 방식</legend>
 
@@ -200,8 +232,8 @@ function App() {
       </section>
 
       <p className="development-note">
-        현재는 입력 화면을 구현한 단계이며 지도와 경로 분석은 다음 차시에
-        추가합니다.
+        출발지와 목적지를 입력하거나 지도에서 선택할 수 있습니다.
+      실제 경로 분석 기능은 아직 연결되지 않았습니다.
       </p>
     </main>
   )
