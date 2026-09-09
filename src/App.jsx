@@ -1,121 +1,209 @@
 import { useState } from 'react'
-import heroImg from './assets/hero.png'
-import reactLogo from './assets/react.svg'
-import viteLogo from './assets/vite.svg'
 import './App.css'
 
+const routeOptions = [
+  {
+    value: 'fast',
+    title: '빠른 경로',
+    description: '이동시간을 우선합니다.',
+  },
+  {
+    value: 'balanced',
+    title: '균형 경로',
+    description: '시간과 안전을 함께 고려합니다.',
+  },
+  {
+    value: 'safe',
+    title: '안전 우선',
+    description: '사고 위험이 낮은 길을 우선합니다.',
+  },
+]
+
 function App() {
-  const [count, setCount] = useState(0)
+  const [start, setStart] = useState('')
+  const [destination, setDestination] = useState('')
+  const [routeType, setRouteType] = useState('balanced')
+  const [safetyLevel, setSafetyLevel] = useState(60)
+  const [message, setMessage] = useState('')
+
+  const swapLocations = () => {
+    setStart(destination)
+    setDestination(start)
+    setMessage('')
+  }
+
+  const handleRouteChange = (value) => {
+    const defaultLevels = {
+      fast: 20,
+      balanced: 60,
+      safe: 90,
+  }
+
+  setRouteType(value)
+  setSafetyLevel(defaultLevels[value])
+}
+
+  const handleSafetyChange = (value) => {
+    const level = Number(value)
+
+    setSafetyLevel(level)
+
+    if (level < 40) {
+      setRouteType('fast')
+    } else if (level < 70) {
+      setRouteType('balanced')
+    } else {
+      setRouteType('safe')
+    }
+  }
+  const handleSubmit = (event) => {
+    event.preventDefault()
+
+    if (!start.trim() || !destination.trim()) {
+      setMessage('출발지와 목적지를 모두 입력해 주세요.')
+      return
+    }
+
+    if (start.trim() === destination.trim()) {
+      setMessage('출발지와 목적지는 서로 달라야 합니다.')
+      return
+    }
+
+    setMessage(
+      `${start}에서 ${destination}까지의 경로 분석을 준비했습니다.`,
+    )
+  }
 
   return (
-    <>
-      <section id="center">
-        <div className="hero">
-          <img src={heroImg} className="base" width="170" height="179" alt="" />
-          <img src={reactLogo} className="framework" alt="React logo" />
-          <img src={viteLogo} className="vite" alt="Vite logo" />
-        </div>
+    <main className="app">
+      <header className="service-header">
+        <div className="logo">SR</div>
         <div>
-          <h1>Get started</h1>
-          <p>
-            Edit <code>src/App.jsx</code> and save to test <code>HMR</code>
-          </p>
+          <p className="service-name">SAFE ROUTE</p>
+          <p className="service-subtitle">교통사고 위험지역 분석 서비스</p>
         </div>
-        <button
-          type="button"
-          className="counter"
-          onClick={() => setCount((count) => count + 1)}
-        >
-          Count is {count}
-        </button>
+      </header>
+
+      <section className="intro">
+        <p className="eyebrow">초보 운전자를 위한 경로 추천</p>
+        <h1>
+          빠른 길뿐만 아니라
+          <br />
+          <span>더 안전한 길</span>을 찾아보세요.
+        </h1>
+        <p>
+          출발지와 목적지를 입력하면 빠른 경로와 안전 우선 경로를
+          비교해 드립니다.
+        </p>
       </section>
 
-      <div className="ticks"></div>
+      <section className="search-card">
+        <h2>경로 검색</h2>
 
-      <section id="next-steps">
-        <div id="docs">
-          <svg className="icon" role="presentation" aria-hidden="true">
-            <use href="/icons.svg#documentation-icon"></use>
-          </svg>
-          <h2>Documentation</h2>
-          <p>Your questions, answered</p>
-          <ul>
-            <li>
-              <a href="https://vite.dev/" target="_blank">
-                <img className="logo" src={viteLogo} alt="" />
-                Explore Vite
-              </a>
-            </li>
-            <li>
-              <a href="https://react.dev/" target="_blank">
-                <img className="button-icon" src={reactLogo} alt="" />
-                Learn more
-              </a>
-            </li>
-          </ul>
-        </div>
-        <div id="social">
-          <svg className="icon" role="presentation" aria-hidden="true">
-            <use href="/icons.svg#social-icon"></use>
-          </svg>
-          <h2>Connect with us</h2>
-          <p>Join the Vite community</p>
-          <ul>
-            <li>
-              <a href="https://github.com/vitejs/vite" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
+        <form onSubmit={handleSubmit}>
+          <div className="location-area">
+            <div className="input-group">
+              <label htmlFor="start">출발지</label>
+              <input
+                id="start"
+                type="text"
+                value={start}
+                onChange={(event) => {
+                  setStart(event.target.value)
+                  setMessage('')
+                }}
+                placeholder="출발지를 입력하세요"
+              />
+            </div>
+
+            <button
+              type="button"
+              className="swap-button"
+              onClick={swapLocations}
+              aria-label="출발지와 목적지 바꾸기"
+            >
+              ⇅
+            </button>
+
+            <div className="input-group">
+              <label htmlFor="destination">목적지</label>
+              <input
+                id="destination"
+                type="text"
+                value={destination}
+                onChange={(event) => {
+                  setDestination(event.target.value)
+                  setMessage('')
+                }}
+                placeholder="목적지를 입력하세요"
+              />
+            </div>
+          </div>
+
+          <fieldset>
+            <legend>경로 추천 방식</legend>
+
+            <div className="route-options">
+              {routeOptions.map((option) => (
+                <label
+                  key={option.value}
+                  className={`route-option ${
+                    routeType === option.value ? 'selected' : ''
+                  }`}
                 >
-                  <use href="/icons.svg#github-icon"></use>
-                </svg>
-                GitHub
-              </a>
-            </li>
-            <li>
-              <a href="https://chat.vite.dev/" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#discord-icon"></use>
-                </svg>
-                Discord
-              </a>
-            </li>
-            <li>
-              <a href="https://x.com/vite_js" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#x-icon"></use>
-                </svg>
-                X.com
-              </a>
-            </li>
-            <li>
-              <a href="https://bsky.app/profile/vite.dev" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#bluesky-icon"></use>
-                </svg>
-                Bluesky
-              </a>
-            </li>
-          </ul>
-        </div>
+                  <input
+                    type="radio"
+                    name="routeType"
+                    value={option.value}
+                    checked={routeType === option.value}
+                    onChange={(event) => handleRouteChange(event.target.value)}
+                  />
+                  <strong>{option.title}</strong>
+                  <span>{option.description}</span>
+                </label>
+              ))}
+            </div>
+          </fieldset>
+
+          <div className="safety-area">
+            <div className="safety-heading">
+              <label htmlFor="safetyLevel">안전 우선 정도</label>
+              <output>{safetyLevel}%</output>
+            </div>
+
+            <input
+              id="safetyLevel"
+              type="range"
+              min="0"
+              max="100"
+              step="10"
+              value={safetyLevel}
+              onChange={(event) => handleSafetyChange(event.target.value)}
+            />
+
+            <div className="range-labels">
+              <span>시간 우선</span>
+              <span>안전 우선</span>
+            </div>
+          </div>
+
+          <button className="analyze-button" type="submit">
+            경로 분석하기
+          </button>
+
+          {message && (
+            <p className="message" role="status">
+              {message}
+            </p>
+          )}
+        </form>
       </section>
 
-      <div className="ticks"></div>
-      <section id="spacer"></section>
-    </>
+      <p className="development-note">
+        현재는 입력 화면을 구현한 단계이며 지도와 경로 분석은 다음 차시에
+        추가합니다.
+      </p>
+    </main>
   )
 }
 
