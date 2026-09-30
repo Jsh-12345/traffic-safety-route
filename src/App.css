@@ -2,6 +2,21 @@
   min-height: 100vh;
 }
 
+.location-area { align-items: start; }
+.location-area .swap-button { margin-top: 32px; }
+.place-input { min-width: 0; }
+.place-status { margin: 0; font-size: 12px; color: #667085; overflow-wrap: anywhere; }
+.place-results { list-style: none; margin: 0; padding: 0; border: 1px solid #d0d5dd; border-radius: 10px; overflow: hidden; }
+.place-results button { width: 100%; border: 0; border-bottom: 1px solid #e4e7ec; background: white; padding: 12px; text-align: left; color: #172033; cursor: pointer; }
+.place-results button:hover, .place-results button:focus-visible { background: #ecfdf5; }
+.place-results span { display: block; font-size: 12px; margin-top: 4px; color: #667085; }
+.api-note { color: #667085; font-size: 13px; line-height: 1.6; }
+.analyze-button:disabled { opacity: .6; cursor: wait; }
+.search-card.actual-route { margin-top: 28px; }
+.actual-route h2 { overflow-wrap: anywhere; }
+.actual-summary { color: #2563eb; font-size: 24px; font-weight: 700; }
+.actual-route > p { line-height: 1.6; }
+
 * {
   box-sizing: border-box;
 }

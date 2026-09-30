@@ -73,10 +73,12 @@ export default function MapSelector({ start, destination, onSelect }) {
       { text: destination, label: '목적지', color: '#1d4ed8' },
     ]
 
+    const bounds = []
     locations.forEach(({ text, label, color }) => {
       const coordinates = readCoordinates(text)
       if (!coordinates) return
 
+      bounds.push(coordinates)
       L.circleMarker(coordinates, {
         radius: 9,
         color,
@@ -88,6 +90,8 @@ export default function MapSelector({ start, destination, onSelect }) {
         .bindTooltip(label, { permanent: true, direction: 'top' })
         .addTo(layer)
     })
+    if (bounds.length === 1) mapRef.current.setView(bounds[0], 15)
+    if (bounds.length === 2) mapRef.current.fitBounds(bounds, { padding: [40, 40], maxZoom: 16 })
   }, [start, destination])
 
   return (

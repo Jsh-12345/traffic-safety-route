@@ -1,7 +1,9 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import './App.css'
 import MapSelector from './MapSelector'
 import RouteComparison from './RouteComparison'
+import PlaceInput from './PlaceInput'
+import ActualRoute from './ActualRoute'
 
 const routeOptions = [
   {
@@ -30,20 +32,40 @@ function App() {
   const [showMap, setShowMap] = useState(false)
   const [showComparison, setShowComparison] = useState(false)
 
-  const handleMapSelect = (target, coordinates) => {
-    if (target === 'start') {
-      setStart(coordinates)
-    } else {
-      setDestination(coordinates)
-    }
+  const [startPoint, setStartPoint] = useState(null)
+  const [endPoint, setEndPoint] = useState(null)
+  const [actualRoute, setActualRoute] = useState(null)
+  const [loading, setLoading] = useState(false)
+  const requestRef = useRef(null)
+  useEffect(() => () => requestRef.current?.abort(), [])
 
-  setMessage('')
+  const invalidate = () => {
+    requestRef.current?.abort()
+    setActualRoute(null)
+    setLoading(false)
+    setMessage('')
   }
-
+  const changeText = (target, value) => {
+    invalidate()
+    if (target === 'start') { setStart(value); setStartPoint(null) }
+    else { setDestination(value); setEndPoint(null) }
+  }
+  const selectPoint = (target, point) => {
+    invalidate()
+    if (target === 'start') { setStart(point.label); setStartPoint(point) }
+    else { setDestination(point.label); setEndPoint(point) }
+    setShowMap(true)
+  }
+  const handleMapSelect = (target, coordinates) => {
+    const [lat, lng] = coordinates.split(',').map(Number)
+    selectPoint(target, { label: coordinates, address: '지도에서 선택한 위치', lat, lng })
+  }
   const swapLocations = () => {
+    invalidate()
     setStart(destination)
     setDestination(start)
-    setMessage('')
+    setStartPoint(endPoint)
+    setEndPoint(startPoint)
   }
 
   const handleRouteChange = (value) => {
@@ -70,21 +92,38 @@ function App() {
       setRouteType('safe')
     }
   }
-  const handleSubmit = (event) => {
+  const handleSubmit = async (event) => {
     event.preventDefault()
-
+    invalidate()
     if (!start.trim() || !destination.trim()) {
       setMessage('출발지와 목적지를 모두 입력해 주세요.')
       return
     }
-
-    if (start.trim() === destination.trim()) {
+    if (!startPoint || !endPoint) {
+      setMessage('검색 결과에서 장소를 선택하거나 지도에서 위치를 선택해 주세요.')
+      return
+    }
+    if (Math.abs(startPoint.lat - endPoint.lat) < 0.000001 && Math.abs(startPoint.lng - endPoint.lng) < 0.000001) {
       setMessage('출발지와 목적지는 서로 달라야 합니다.')
       return
     }
-
-    setMessage('입력을 확인했습니다. 실제 경로 API는 아직 연결되지 않아 아래에는 고정된 예시 구간을 표시합니다.')
-    setShowComparison(true)
+    const controller = new AbortController()
+    requestRef.current = controller
+    setLoading(true)
+    try {
+      const params = new URLSearchParams({ startLat: startPoint.lat, startLng: startPoint.lng, endLat: endPoint.lat, endLng: endPoint.lng })
+      const response = await fetch(`/api/directions?${params}`, { signal: controller.signal })
+      const data = await response.json()
+      if (!response.ok) throw new Error(data.error || '경로 조회에 실패했습니다.')
+      if (!controller.signal.aborted) {
+        setActualRoute({ ...data, start: startPoint, destination: endPoint })
+        setMessage('실제 자동차 경로를 조회했습니다. 아래 지도에서 확인하세요.')
+      }
+    } catch (error) {
+      if (!controller.signal.aborted) setMessage(error.message)
+    } finally {
+      if (!controller.signal.aborted) setLoading(false)
+    }
   }
 
   return (
@@ -105,8 +144,7 @@ function App() {
           <span>더 안전한 길</span>을 찾아보세요.
         </h1>
         <p>
-          출발지와 목적지를 입력하면 빠른 경로와 안전 우선 경로를
-          비교해 드립니다.
+          장소를 검색하거나 지도에서 선택하여 실제 자동차 경로를 확인하세요.
         </p>
       </section>
 
@@ -115,19 +153,8 @@ function App() {
 
         <form onSubmit={handleSubmit}>
           <div className="location-area">
-            <div className="input-group">
-              <label htmlFor="start">출발지</label>
-              <input
-                id="start"
-                type="text"
-                value={start}
-                onChange={(event) => {
-                  setStart(event.target.value)
-                  setMessage('')
-                }}
-                placeholder="출발지를 입력하세요"
-              />
-            </div>
+            <PlaceInput id="start" label="출발지" value={start} selected={startPoint}
+              onChange={value => changeText('start', value)} onSelect={point => selectPoint('start', point)} />
 
             <button
               type="button"
@@ -138,19 +165,8 @@ function App() {
               ⇅
             </button>
 
-            <div className="input-group">
-              <label htmlFor="destination">목적지</label>
-              <input
-                id="destination"
-                type="text"
-                value={destination}
-                onChange={(event) => {
-                  setDestination(event.target.value)
-                  setMessage('')
-                }}
-                placeholder="목적지를 입력하세요"
-              />
-            </div>
+            <PlaceInput id="destination" label="목적지" value={destination} selected={endPoint}
+              onChange={value => changeText('destination', value)} onSelect={point => selectPoint('destination', point)} />
           </div>
           
           <button
@@ -166,15 +182,15 @@ function App() {
           <div id="location-map-panel">
             {showMap && (
               <MapSelector
-                start={start}
-                destination={destination}
+                start={startPoint ? `${startPoint.lat}, ${startPoint.lng}` : ''}
+                destination={endPoint ? `${endPoint.lat}, ${endPoint.lng}` : ''}
                 onSelect={handleMapSelect}
               />
             )}
           </div>
           
           <fieldset>
-            <legend>경로 추천 방식</legend>
+            <legend>경로 추천 방식 · 다음 단계에서 적용 예정</legend>
 
             <div className="route-options">
               {routeOptions.map((option) => (
@@ -220,8 +236,9 @@ function App() {
             </div>
           </div>
 
-          <button className="analyze-button" type="submit">
-            입력 확인 후 예시 경로 비교
+          <p className="api-note">현재 실제 조회는 시간 우선 경로만 제공합니다. 위 추천 방식과 슬라이더는 아직 실제 조회에 반영되지 않습니다.</p>
+          <button className="analyze-button" type="submit" disabled={loading}>
+            {loading ? '경로 조회 중…' : '실제 빠른 경로 조회'}
           </button>
 
           {message && (
@@ -241,13 +258,15 @@ function App() {
         </button>
       </section>
 
+      {actualRoute && <ActualRoute route={actualRoute} />}
+
       <div id="route-comparison-panel">
         {showComparison && <RouteComparison />}
       </div>
 
       <p className="development-note">
-        출발지와 목적지를 입력하거나 지도에서 선택할 수 있습니다.
-        현재 비교 화면은 고정 예시이며 입력 위치·추천 방식·슬라이더는 실제 경로 계산에 아직 반영되지 않습니다.
+        장소 검색: 카카오 · 자동차 경로: 카카오모빌리티 · 배경 지도: OpenStreetMap.
+        예시 비교 화면의 위험점수는 가상 데이터로 계산됩니다.
       </p>
     </main>
   )
