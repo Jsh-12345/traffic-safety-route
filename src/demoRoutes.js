@@ -1,10 +1,16 @@
-// 3차시 화면 시험용 가상 데이터. 실제 사고 통계나 도로 경로가 아닙니다.
-// 시간과 거리는 예시값이며, 위험점수·등급도 임시로 지정했습니다.
+import { calculateHazardScore, calculateRouteRisk, getRiskGrade } from './riskScore.js'
+
+// 4차시 시험용 가상 데이터. 실제 사고 통계나 도로 경로가 아닙니다.
+// injuries는 사망자를 제외한 부상자 수입니다. 시간·거리는 고정 예시값입니다.
+// 아래 사고 건수·부상자 수·사망자 수를 바꾸고 저장하면 점수가 다시 계산됩니다.
 export const demoHazards = [
-  { id: 'A', name: '가상 위험지역 A', position: [36.350, 127.377], grade: '높음', color: '#c2413b', score: 20 },
-  { id: 'B', name: '가상 위험지역 B', position: [36.350, 127.387], grade: '보통', color: '#b75b08', score: 10 },
-  { id: 'C', name: '가상 위험지역 C', position: [36.357, 127.389], grade: '보통', color: '#b75b08', score: 16 },
-]
+  { id: 'A', name: '가상 위험지역 A', position: [36.350, 127.377], accidents: 5, injuries: 5, fatalities: 1 },
+  { id: 'B', name: '가상 위험지역 B', position: [36.350, 127.387], accidents: 2, injuries: 4, fatalities: 0 },
+  { id: 'C', name: '가상 위험지역 C', position: [36.357, 127.389], accidents: 4, injuries: 6, fatalities: 0 },
+].map((hazard) => {
+  const score = calculateHazardScore(hazard)
+  return { ...hazard, score, ...getRiskGrade(score) }
+})
 
 export const demoRoutes = [
   {
@@ -20,6 +26,5 @@ export const demoRoutes = [
 ].map((route) => ({
   ...route,
   // 공간 분석은 이후 구현합니다. 이번에는 미리 연결한 위험지역 점수만 합산합니다.
-  risk: demoHazards.filter((hazard) => route.hazardIds.includes(hazard.id))
-    .reduce((sum, hazard) => sum + hazard.score, 0),
+  risk: calculateRouteRisk(route.hazardIds, demoHazards),
 }))

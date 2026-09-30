@@ -16,6 +16,7 @@
 .comparison-legend .legend-high, .comparison-legend .legend-medium { width: 12px; height: 12px; border-radius: 50%; }
 .legend-high { background: #c2413b; }
 .legend-medium { background: #b75b08; }
+.comparison-legend .legend-low { width: 12px; height: 12px; border-radius: 50%; background: #64748b; }
 .comparison-help { font-size: 13px; line-height: 1.6; color: #667085; }
 .comparison-cards { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; margin-top: 24px; }
 .comparison-card { border: 2px solid #e4e7ec; border-radius: 16px; padding: 20px; }
