@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import './App.css'
 import MapSelector from './MapSelector'
+import RouteComparison from './RouteComparison'
 
 const routeOptions = [
   {
@@ -27,6 +28,7 @@ function App() {
   const [safetyLevel, setSafetyLevel] = useState(60)
   const [message, setMessage] = useState('')
   const [showMap, setShowMap] = useState(false)
+  const [showComparison, setShowComparison] = useState(false)
 
   const handleMapSelect = (target, coordinates) => {
     if (target === 'start') {
@@ -81,9 +83,8 @@ function App() {
       return
     }
 
-    setMessage(
-      `${start}에서 ${destination}까지의 경로 분석을 준비했습니다.`,
-    )
+    setMessage('입력을 확인했습니다. 실제 경로 API는 아직 연결되지 않아 아래에는 고정된 예시 구간을 표시합니다.')
+    setShowComparison(true)
   }
 
   return (
@@ -220,7 +221,7 @@ function App() {
           </div>
 
           <button className="analyze-button" type="submit">
-            경로 분석하기
+            입력 확인 후 예시 경로 비교
           </button>
 
           {message && (
@@ -229,11 +230,24 @@ function App() {
             </p>
           )}
         </form>
+        <button
+          type="button"
+          className="map-toggle-button"
+          aria-expanded={showComparison}
+          aria-controls="route-comparison-panel"
+          onClick={() => setShowComparison((previous) => !previous)}
+        >
+          {showComparison ? '예시 결과 닫기' : '입력 없이 예시 경로 비교 보기'}
+        </button>
       </section>
+
+      <div id="route-comparison-panel">
+        {showComparison && <RouteComparison />}
+      </div>
 
       <p className="development-note">
         출발지와 목적지를 입력하거나 지도에서 선택할 수 있습니다.
-      실제 경로 분석 기능은 아직 연결되지 않았습니다.
+        현재 비교 화면은 고정 예시이며 입력 위치·추천 방식·슬라이더는 실제 경로 계산에 아직 반영되지 않습니다.
       </p>
     </main>
   )
