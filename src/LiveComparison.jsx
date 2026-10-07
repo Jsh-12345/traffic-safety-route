@@ -19,9 +19,10 @@ export default function LiveComparison({ route, safetyLevel }) {
     const candidates = route.routes || [route]
     return ready ? candidates.map(r => scoreRoute(r, route.accidentData.hazards)) : candidates
   }, [route, ready])
-  const ranked = useMemo(() => ready ? rankRoutes(scored, safetyLevel) : scored, [scored, safetyLevel, ready])
+  const ranked = useMemo(() => ready ? rankRoutes(scored, safetyLevel) : [...scored].sort((a, b) => a.duration - b.duration || a.distance - b.distance), [scored, safetyLevel, ready])
   const recommended = ranked[0]
   const fastest = useMemo(() => [...ranked].sort((a, b) => a.duration - b.duration || a.distance - b.distance)[0], [ranked])
+  const secondCard = recommended.id === fastest.id ? ranked.find(r => r.id !== fastest.id) : recommended
   const hazards = useMemo(() => ready ? [...new Map(ranked.flatMap(r => r.hazards).map(h => [h.id, h])).values()] : [], [ranked, ready])
   useEffect(() => {
     const map = L.map(container.current)
@@ -102,6 +103,25 @@ export default function LiveComparison({ route, safetyLevel }) {
         <h2>{route.start.label} → {route.destination.label}</h2>
         {ready && recommended.id !== fastest.id && <p>빠른 경로보다 약 {Math.max(0, Math.round((recommended.duration - fastest.duration) / 60))}분 더 소요 · 위험점수 {fastest.risk - recommended.risk}점 감소</p>}
       </div>
+      <div className="live-route-cards" aria-label="실제 경로 요약 비교">
+        {[fastest, secondCard].filter(Boolean).map((candidate, index) => {
+          const isRecommended = candidate.id === recommended.id
+          const name = index === 0 ? '빠른 경로' : isRecommended ? '추천 경로' : '다른 후보'
+          return <article key={candidate.id} className={`live-route-card ${index === 0 ? 'fast' : isRecommended ? 'safe' : 'alternate'} ${highlightedId === candidate.id ? 'active' : ''}`}>
+            <div className="live-route-card-heading"><h3>{name}</h3>{isRecommended && <span className="table-recommend-badge">현재 추천</span>}</div>
+            <dl>
+              <div><dt>예상 소요시간</dt><dd>{(candidate.duration / 60).toFixed(1)}<small>분</small></dd></div>
+              <div><dt>이동거리</dt><dd>{(candidate.distance / 1000).toFixed(1)}<small>km</small></dd></div>
+              <div><dt>관련 위험지역</dt><dd>{ready ? candidate.hazards.length : '—'}<small>{ready ? '곳' : ''}</small></dd></div>
+              <div><dt>위험점수</dt><dd>{ready ? candidate.risk : '—'}<small>{ready ? '점' : ''}</small></dd></div>
+            </dl>
+            <button type="button" aria-pressed={highlightedId === candidate.id} onClick={() => setHighlightedId(highlightedId === candidate.id ? null : candidate.id)}>
+              {highlightedId === candidate.id ? '지도에서 강조 중 · 해제' : `${name} 지도에서 강조`}
+            </button>
+          </article>
+        })}
+      </div>
+      {ready && secondCard && <p className="route-card-summary">{recommended.id === fastest.id ? '현재 설정에서는 빠른 경로가 추천 경로입니다.' : `추천 경로는 빠른 경로보다 ${(recommended.duration - fastest.duration) / 60 >= 0 ? '+' : ''}${((recommended.duration - fastest.duration) / 60).toFixed(1)}분, 위험점수 ${fastest.risk - recommended.risk}점 낮습니다.`} 두 경로의 수치는 조회된 후보를 기준으로 계산했습니다.</p>}
       <div className="route-legend" aria-label="지도 범례">
         <span><i className="legend-line legend-blue" />빠른 경로</span>
         {recommended.id !== fastest.id && <span><i className="legend-line legend-green" />추천 경로</span>}
