@@ -3,10 +3,17 @@ import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 import { rankRoutes, scoreRoute } from './routeSafety.js'
 import { calculateHazardScore, RISK_WEIGHTS } from './riskScore.js'
+import { getCurrentLocation } from './currentLocation.js'
 
 export default function LiveComparison({ route, safetyLevel }) {
   const container = useRef(null)
+  const mapRef = useRef(null)
+  const routeBoundsRef = useRef(null)
+  const currentPositionRef = useRef(null)
+  const currentLocationLayerRef = useRef(null)
   const [highlightedId, setHighlightedId] = useState(null)
+  const [locating, setLocating] = useState(false)
+  const [locationMessage, setLocationMessage] = useState('')
   const ready = !!route.accidentData?.hazards.length
   const scored = useMemo(() => {
     const candidates = route.routes || [route]
@@ -18,6 +25,7 @@ export default function LiveComparison({ route, safetyLevel }) {
   const hazards = useMemo(() => ready ? [...new Map(ranked.flatMap(r => r.hazards).map(h => [h.id, h])).values()] : [], [ranked, ready])
   useEffect(() => {
     const map = L.map(container.current)
+    mapRef.current = map
     L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
       maxZoom: 19, attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
     }).addTo(map)
@@ -45,8 +53,44 @@ export default function LiveComparison({ route, safetyLevel }) {
       L.circleMarker([point.lat, point.lng], { color, fillOpacity: 1, radius: 8 }).bindTooltip(label, { permanent: true }).addTo(map)
     }
     map.fitBounds(bounds, { padding: [35, 35] })
-    return () => map.remove()
+    routeBoundsRef.current = bounds
+    currentLocationLayerRef.current = L.layerGroup().addTo(map)
+    if (currentPositionRef.current) {
+      const { lat, lng, accuracy } = currentPositionRef.current
+      if (Number.isFinite(accuracy)) L.circle([lat, lng], { radius: accuracy, color: '#7c3aed', weight: 1, fillOpacity: .08, interactive: false }).addTo(currentLocationLayerRef.current)
+      L.circleMarker([lat, lng], { radius: 9, color: '#fff', weight: 3, fillColor: '#7c3aed', fillOpacity: 1, bubblingMouseEvents: false })
+        .bindTooltip('내 현재 위치', { permanent: true, direction: 'top' }).addTo(currentLocationLayerRef.current)
+    }
+    return () => {
+      map.remove()
+      mapRef.current = null
+      routeBoundsRef.current = null
+      currentLocationLayerRef.current = null
+    }
   }, [route, recommended, fastest, hazards, ranked, highlightedId])
+
+  const showCurrentLocation = async () => {
+    setLocating(true)
+    setLocationMessage('현재 위치를 확인하는 중입니다…')
+    try {
+      const position = await getCurrentLocation()
+      currentPositionRef.current = position
+      const map = mapRef.current
+      const layer = currentLocationLayerRef.current
+      if (!map || !layer) return
+      const { lat, lng, accuracy } = position
+      layer.clearLayers()
+      if (Number.isFinite(accuracy)) L.circle([lat, lng], { radius: accuracy, color: '#7c3aed', weight: 1, fillOpacity: .08, interactive: false }).addTo(layer)
+      L.circleMarker([lat, lng], { radius: 9, color: '#fff', weight: 3, fillColor: '#7c3aed', fillOpacity: 1, bubblingMouseEvents: false })
+        .bindTooltip('내 현재 위치', { permanent: true, direction: 'top' }).addTo(layer)
+      map.setView([lat, lng], 15)
+      setLocationMessage(`현재 위치를 표시했습니다 (오차 약 ${Math.round(accuracy)}m).`)
+    } catch (error) {
+      setLocationMessage(error.message)
+    } finally {
+      setLocating(false)
+    }
+  }
 
   return (
     <section className="search-card actual-route" aria-label="실제 후보 경로 비교 결과">
@@ -57,6 +101,11 @@ export default function LiveComparison({ route, safetyLevel }) {
       <p className="actual-summary">{ready ? '추천 경로' : '빠른 경로'} · 약 {Math.max(1, Math.ceil(recommended.duration / 60))}분 · {(recommended.distance / 1000).toFixed(1)}km</p>
       <p>파란 실선: 빠른 경로 · 초록 점선: 다른 추천 경로 · 주황 점선: 나머지 후보 · 보라 실선: 표에서 강조한 경로 · 붉은 원: 관련 사고 다발지역</p>
       {ranked.length > 1 && <p className="api-note">후보들이 같은 도로를 지나는 구간은 선이 겹칩니다. 아래 표에서 ‘지도에서 강조’를 누르면 선택한 후보의 전체 경로가 보라색으로 나타납니다.</p>}
+      <div className="map-toolbar">
+        <button type="button" className="current-location-button" onClick={showCurrentLocation} disabled={locating}>{locating ? '위치 확인 중…' : '◎ 내 현재 위치 보기'}</button>
+        <button type="button" onClick={() => mapRef.current?.fitBounds(routeBoundsRef.current, { padding: [35, 35] })}>경로 전체 보기</button>
+      </div>
+      {locationMessage && <p role="status" className="location-feedback">{locationMessage}</p>}
       <div ref={container} className="location-map" aria-label="실제 후보 경로와 사고 다발지역 지도" />
       {route.accidentError && <p role="alert" className="analysis-warning">사고 데이터 분석 불가: {route.accidentError} 빠른 경로만 제공합니다.</p>}
       {route.accidentData && !ready && <p role="status">{route.accidentData.year}년 대전 조회 결과가 0건입니다. 안전점수를 판단하지 않고 빠른 경로만 표시합니다.</p>}

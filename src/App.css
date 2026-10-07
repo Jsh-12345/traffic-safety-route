@@ -325,6 +325,19 @@ legend {
   color: white;
 }
 
+.map-target-buttons .current-location-button,
+.map-toolbar .current-location-button {
+  border-color: #7c3aed;
+  color: #5b21b6;
+  background: #f5f3ff;
+}
+
+.map-toolbar { display: flex; flex-wrap: wrap; gap: 10px; margin: 14px 0; }
+.map-toolbar button { padding: 10px 16px; border: 1px solid #d0d5dd; border-radius: 8px; background: white; color: #172033; cursor: pointer; }
+.map-toolbar button:focus-visible, .current-location-button:focus-visible { outline: 3px solid #7c3aed; outline-offset: 2px; }
+.map-toolbar button:disabled, .map-target-buttons button:disabled { opacity: .65; cursor: wait; }
+.location-feedback { margin: 10px 0; color: #5b21b6; font-size: 14px; }
+
 .map-selector p {
   color: #475467;
   font-size: 14px;

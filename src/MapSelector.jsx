@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
+import { getCurrentLocation } from './currentLocation.js'
 
 function readCoordinates(text) {
   const match = text.match(/^(-?\d+\.?\d*),\s*(-?\d+\.?\d*)$/)
@@ -17,8 +18,11 @@ export default function MapSelector({ start, destination, onSelect }) {
   const containerRef = useRef(null)
   const mapRef = useRef(null)
   const markersRef = useRef(null)
+  const currentLocationRef = useRef(null)
   const [target, setTarget] = useState('start')
   const [tileError, setTileError] = useState(false)
+  const [locating, setLocating] = useState(false)
+  const [locationMessage, setLocationMessage] = useState('')
 
   // 지도를 만들고, 화면에서 제거될 때 정리합니다.
   useEffect(() => {
@@ -40,11 +44,13 @@ export default function MapSelector({ start, destination, onSelect }) {
 
     mapRef.current = map
     markersRef.current = L.layerGroup().addTo(map)
+    currentLocationRef.current = L.layerGroup().addTo(map)
 
     return () => {
       map.remove()
       mapRef.current = null
       markersRef.current = null
+      currentLocationRef.current = null
     }
   }, [])
 
@@ -94,6 +100,28 @@ export default function MapSelector({ start, destination, onSelect }) {
     if (bounds.length === 2) mapRef.current.fitBounds(bounds, { padding: [40, 40], maxZoom: 16 })
   }, [start, destination])
 
+  const showCurrentLocation = async () => {
+    setLocating(true)
+    setLocationMessage('현재 위치를 확인하는 중입니다…')
+    try {
+      const { lat, lng, accuracy } = await getCurrentLocation()
+      if (!mapRef.current || !currentLocationRef.current) return
+      const layer = currentLocationRef.current
+      layer.clearLayers()
+      if (Number.isFinite(accuracy)) {
+        L.circle([lat, lng], { radius: accuracy, color: '#7c3aed', weight: 1, fillOpacity: .08, interactive: false }).addTo(layer)
+      }
+      L.circleMarker([lat, lng], { radius: 9, color: '#fff', weight: 3, fillColor: '#7c3aed', fillOpacity: 1, bubblingMouseEvents: false })
+        .bindTooltip('내 현재 위치', { permanent: true, direction: 'top' }).addTo(layer)
+      mapRef.current.setView([lat, lng], 15)
+      setLocationMessage(`현재 위치를 표시했습니다 (오차 약 ${Math.round(accuracy)}m).`)
+    } catch (error) {
+      setLocationMessage(error.message)
+    } finally {
+      setLocating(false)
+    }
+  }
+
   return (
     <section className="map-selector" aria-label="지도에서 위치 선택">
       <div className="map-target-buttons">
@@ -111,7 +139,12 @@ export default function MapSelector({ start, destination, onSelect }) {
         >
           목적지 선택
         </button>
+        <button type="button" className="current-location-button" onClick={showCurrentLocation} disabled={locating}>
+          {locating ? '위치 확인 중…' : '◎ 내 현재 위치 보기'}
+        </button>
       </div>
+
+      {locationMessage && <p role="status" className="location-feedback">{locationMessage}</p>}
 
       <p role="status">
         지도에서 {target === 'start' ? '출발지' : '목적지'}를 클릭하세요.
