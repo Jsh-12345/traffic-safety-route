@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import './App.css'
 import MapSelector from './MapSelector'
-import RouteComparison from './RouteComparison'
 import PlaceInput from './PlaceInput'
 import LiveComparison from './LiveComparison'
 
@@ -31,7 +30,6 @@ function App() {
   const [dataYear, setDataYear] = useState('2024')
   const [message, setMessage] = useState('')
   const [showMap, setShowMap] = useState(false)
-  const [showComparison, setShowComparison] = useState(false)
 
   const [startPoint, setStartPoint] = useState(null)
   const [endPoint, setEndPoint] = useState(null)
@@ -39,6 +37,9 @@ function App() {
   const [loading, setLoading] = useState(false)
   const requestRef = useRef(null)
   useEffect(() => () => requestRef.current?.abort(), [])
+  useEffect(() => {
+    if (actualRoute) document.getElementById('analysis-result')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  }, [actualRoute])
 
   const invalidate = () => {
     requestRef.current?.abort()
@@ -55,7 +56,7 @@ function App() {
     invalidate()
     if (target === 'start') { setStart(point.label); setStartPoint(point) }
     else { setDestination(point.label); setEndPoint(point) }
-    setShowMap(true)
+    setShowMap(target === 'start' ? !endPoint : !startPoint)
   }
   const handleMapSelect = (target, coordinates) => {
     const [lat, lng] = coordinates.split(',').map(Number)
@@ -129,8 +130,9 @@ function App() {
         accidentError: accidents.status === 'rejected' ? accidents.reason.message : '',
       }
       if (!controller.signal.aborted) {
+        setShowMap(false)
         setActualRoute({ ...data, start: startPoint, destination: endPoint })
-        setMessage(data.accidentError ? '빠른 경로는 조회됐지만 사고 데이터 연결을 확인해야 합니다.' : '후보 경로와 사고 데이터를 조회했습니다. 아래 비교 결과를 확인하세요.')
+        setMessage(data.accidentError ? '빠른 경로는 조회됐지만 사고 데이터 연결을 확인해야 합니다.' : '')
       }
     } catch (error) {
       if (!controller.signal.aborted) setMessage(error.message)
@@ -230,7 +232,7 @@ function App() {
           <div className="safety-area">
             <div className="safety-heading">
               <label htmlFor="safetyLevel">안전 우선 정도</label>
-              <output>{safetyLevel}%</output>
+              <output>{safetyLevel}% <span>{safetyLevel === 0 ? '시간 우선 모드' : safetyLevel === 100 ? '안전 우선 모드' : '균형 모드'}</span></output>
             </div>
 
             <input
@@ -266,26 +268,12 @@ function App() {
             </p>
           )}
         </form>
-        <button
-          type="button"
-          className="map-toggle-button"
-          aria-expanded={showComparison}
-          aria-controls="route-comparison-panel"
-          onClick={() => setShowComparison((previous) => !previous)}
-        >
-          {showComparison ? '예시 결과 닫기' : '입력 없이 예시 경로 비교 보기'}
-        </button>
       </section>
 
       {actualRoute && <LiveComparison route={actualRoute} safetyLevel={safetyLevel} />}
 
-      <div id="route-comparison-panel">
-        {showComparison && <RouteComparison />}
-      </div>
-
       <p className="development-note">
         장소 검색: 카카오 · 자동차 경로: 카카오모빌리티 · 배경 지도: OpenStreetMap.
-        예시 비교 화면의 위험점수는 가상 데이터로 계산됩니다.
       </p>
     </main>
   )
