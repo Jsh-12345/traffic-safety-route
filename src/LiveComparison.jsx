@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 import { rankRoutes, scoreRoute } from './routeSafety.js'
@@ -6,6 +6,7 @@ import { calculateHazardScore, RISK_WEIGHTS } from './riskScore.js'
 
 export default function LiveComparison({ route, safetyLevel }) {
   const container = useRef(null)
+  const [highlightedId, setHighlightedId] = useState(null)
   const ready = !!route.accidentData?.hazards.length
   const scored = useMemo(() => {
     const candidates = route.routes || [route]
@@ -21,12 +22,20 @@ export default function LiveComparison({ route, safetyLevel }) {
       maxZoom: 19, attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
     }).addTo(map)
     const bounds = L.latLngBounds([])
-    const draw = (candidate, color, dashArray) => {
-      for (const road of candidate.segments || [candidate.points]) L.polyline(road, { color, dashArray, weight: 6 }).addTo(map)
+    const draw = (candidate, options) => {
+      for (const road of candidate.segments || [candidate.points]) L.polyline(road, options).addTo(map)
       candidate.points.forEach(p => bounds.extend(p))
     }
-    draw(fastest, '#2563eb')
-    if (recommended.id !== fastest.id) draw(recommended, '#087f5b', '10 7')
+    // 다른 후보를 먼저 그려 공유 구간에서는 대표 경로가 위에 오게 합니다.
+    ranked.filter(r => r.id !== fastest.id && r.id !== recommended.id)
+      .forEach(r => draw(r, { color: '#d97706', dashArray: '10 7', weight: 7, opacity: .9 }))
+    draw(fastest, { color: '#2563eb', weight: 5, opacity: .95 })
+    if (recommended.id !== fastest.id) draw(recommended, { color: '#087f5b', dashArray: '10 7', weight: 6, opacity: .95 })
+    const highlighted = ranked.find(r => r.id === highlightedId)
+    if (highlighted) {
+      draw(highlighted, { color: '#fff', weight: 11, opacity: .95 })
+      draw(highlighted, { color: '#7c3aed', weight: 7, opacity: 1 })
+    }
     for (const h of hazards) {
       const text = document.createElement('span')
       text.textContent = `${h.label} · ${h.typeLabel} · ${calculateHazardScore(h)}점 (${h.year}년)`
@@ -37,7 +46,7 @@ export default function LiveComparison({ route, safetyLevel }) {
     }
     map.fitBounds(bounds, { padding: [35, 35] })
     return () => map.remove()
-  }, [route, recommended, fastest, hazards])
+  }, [route, recommended, fastest, hazards, ranked, highlightedId])
 
   return (
     <section className="search-card actual-route" aria-label="실제 후보 경로 비교 결과">
@@ -46,7 +55,8 @@ export default function LiveComparison({ route, safetyLevel }) {
       {route.routeSearch?.failedPriorities.length > 0 && <p role="status" className="analysis-warning">일부 경로 조회 실패: {route.routeSearch.failedPriorities.join(', ')}. 표시된 후보만 비교합니다.</p>}
       <h2>{route.start.label} → {route.destination.label}</h2>
       <p className="actual-summary">{ready ? '추천 경로' : '빠른 경로'} · 약 {Math.max(1, Math.ceil(recommended.duration / 60))}분 · {(recommended.distance / 1000).toFixed(1)}km</p>
-      <p>파란 실선: 빠른 경로 · 초록 점선: 추천 경로(다른 경로일 때 표시) · 붉은 원: 관련 사고 다발지역</p>
+      <p>파란 실선: 빠른 경로 · 초록 점선: 다른 추천 경로 · 주황 점선: 나머지 후보 · 보라 실선: 표에서 강조한 경로 · 붉은 원: 관련 사고 다발지역</p>
+      {ranked.length > 1 && <p className="api-note">후보들이 같은 도로를 지나는 구간은 선이 겹칩니다. 아래 표에서 ‘지도에서 강조’를 누르면 선택한 후보의 전체 경로가 보라색으로 나타납니다.</p>}
       <div ref={container} className="location-map" aria-label="실제 후보 경로와 사고 다발지역 지도" />
       {route.accidentError && <p role="alert" className="analysis-warning">사고 데이터 분석 불가: {route.accidentError} 빠른 경로만 제공합니다.</p>}
       {route.accidentData && !ready && <p role="status">{route.accidentData.year}년 대전 조회 결과가 0건입니다. 안전점수를 판단하지 않고 빠른 경로만 표시합니다.</p>}
@@ -60,7 +70,11 @@ export default function LiveComparison({ route, safetyLevel }) {
           <caption>후보별 비교 · 안전 우선 {safetyLevel}%</caption>
           <thead><tr><th>경로</th><th>예상 시간</th><th>거리</th><th>관련 지역</th><th>위험점수</th><th>종합점수</th></tr></thead>
           <tbody>{ranked.map(r => <tr key={r.id} className={r.id === recommended.id ? 'recommended-row' : ''}>
-            <th>{r.id === recommended.id ? '추천 · ' : ''}{r.id === fastest.id ? '빠른 경로' : `후보 ${r.id.replace('route-', '')}`}</th>
+            <th>{r.id === recommended.id ? '추천 · ' : ''}{r.id === fastest.id ? '빠른 경로' : `후보 ${r.id.replace('route-', '')}`}
+              <button type="button" className="route-highlight-button" aria-pressed={highlightedId === r.id} onClick={() => setHighlightedId(highlightedId === r.id ? null : r.id)}>
+                {highlightedId === r.id ? '강조 해제' : '지도에서 강조'}
+              </button>
+            </th>
             <td>{(r.duration / 60).toFixed(1)}분</td><td>{(r.distance / 1000).toFixed(1)}km</td>
             <td>{r.hazards.length}개</td><td>{r.risk}점</td><td>{r.combined.toFixed(3)}</td>
           </tr>)}</tbody>
