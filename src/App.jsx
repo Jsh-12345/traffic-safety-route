@@ -3,7 +3,7 @@ import './App.css'
 import MapSelector from './MapSelector'
 import RouteComparison from './RouteComparison'
 import PlaceInput from './PlaceInput'
-import ActualRoute from './ActualRoute'
+import LiveComparison from './LiveComparison'
 
 const routeOptions = [
   {
@@ -27,7 +27,8 @@ function App() {
   const [start, setStart] = useState('')
   const [destination, setDestination] = useState('')
   const [routeType, setRouteType] = useState('balanced')
-  const [safetyLevel, setSafetyLevel] = useState(60)
+  const [safetyLevel, setSafetyLevel] = useState(50)
+  const [dataYear, setDataYear] = useState('2024')
   const [message, setMessage] = useState('')
   const [showMap, setShowMap] = useState(false)
   const [showComparison, setShowComparison] = useState(false)
@@ -70,9 +71,9 @@ function App() {
 
   const handleRouteChange = (value) => {
     const defaultLevels = {
-      fast: 20,
-      balanced: 60,
-      safe: 90,
+      fast: 0,
+      balanced: 50,
+      safe: 100,
   }
 
   setRouteType(value)
@@ -84,9 +85,9 @@ function App() {
 
     setSafetyLevel(level)
 
-    if (level < 40) {
+    if (level === 0) {
       setRouteType('fast')
-    } else if (level < 70) {
+    } else if (level < 100) {
       setRouteType('balanced')
     } else {
       setRouteType('safe')
@@ -112,12 +113,24 @@ function App() {
     setLoading(true)
     try {
       const params = new URLSearchParams({ startLat: startPoint.lat, startLng: startPoint.lng, endLat: endPoint.lat, endLng: endPoint.lng })
-      const response = await fetch(`/api/directions?${params}`, { signal: controller.signal })
-      const data = await response.json()
-      if (!response.ok) throw new Error(data.error || '경로 조회에 실패했습니다.')
+      const fetchJson = async (url) => {
+        const response = await fetch(url, { signal: controller.signal })
+        const data = await response.json()
+        if (!response.ok) throw new Error(data.error || '조회에 실패했습니다.')
+        return data
+      }
+      const [directions, accidents] = await Promise.allSettled([
+        fetchJson(`/api/directions?${params}`),
+        fetchJson(`/api/accidents?year=${dataYear}`),
+      ])
+      if (directions.status === 'rejected') throw directions.reason
+      const data = { ...directions.value,
+        accidentData: accidents.status === 'fulfilled' ? accidents.value : null,
+        accidentError: accidents.status === 'rejected' ? accidents.reason.message : '',
+      }
       if (!controller.signal.aborted) {
         setActualRoute({ ...data, start: startPoint, destination: endPoint })
-        setMessage('실제 자동차 경로를 조회했습니다. 아래 지도에서 확인하세요.')
+        setMessage(data.accidentError ? '빠른 경로는 조회됐지만 사고 데이터 연결을 확인해야 합니다.' : '후보 경로와 사고 데이터를 조회했습니다. 아래 비교 결과를 확인하세요.')
       }
     } catch (error) {
       if (!controller.signal.aborted) setMessage(error.message)
@@ -190,7 +203,7 @@ function App() {
           </div>
           
           <fieldset>
-            <legend>경로 추천 방식 · 다음 단계에서 적용 예정</legend>
+            <legend>경로 추천 방식</legend>
 
             <div className="route-options">
               {routeOptions.map((option) => (
@@ -236,9 +249,15 @@ function App() {
             </div>
           </div>
 
-          <p className="api-note">현재 실제 조회는 시간 우선 경로만 제공합니다. 위 추천 방식과 슬라이더는 아직 실제 조회에 반영되지 않습니다.</p>
+          <div className="year-picker">
+            <label htmlFor="data-year">사고 데이터 기준 연도</label>
+            <select id="data-year" value={dataYear} onChange={e => { invalidate(); setDataYear(e.target.value) }}>
+              {['2024', '2023', '2022', '2021'].map(year => <option key={year} value={year}>{year}년</option>)}
+            </select>
+          </div>
+          <p className="api-note">빠른 경로는 안전 가중치 0%, 안전 우선은 100%입니다. 조회 후 슬라이더를 바꾸면 받은 후보들의 추천 순위가 바로 갱신됩니다. 사고 데이터는 대전의 법규위반별 사고 다발지역을 사용합니다.</p>
           <button className="analyze-button" type="submit" disabled={loading}>
-            {loading ? '경로 조회 중…' : '실제 빠른 경로 조회'}
+            {loading ? '경로 조회 중…' : '실제 경로 분석하기'}
           </button>
 
           {message && (
@@ -258,7 +277,7 @@ function App() {
         </button>
       </section>
 
-      {actualRoute && <ActualRoute route={actualRoute} />}
+      {actualRoute && <LiveComparison route={actualRoute} safetyLevel={safetyLevel} />}
 
       <div id="route-comparison-panel">
         {showComparison && <RouteComparison />}

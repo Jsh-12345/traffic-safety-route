@@ -5,7 +5,7 @@ import { calculateHazardScore } from '../src/riskScore.js'
 
 const data = { routes: [{ result_code: 0, summary: { distance: 1234, duration: 120 }, sections: [{ roads: [{ vertexes: [127.1, 36.1, 127.2, 36.2] }] }] }] }
 test('longitude/latitude becomes Leaflet latitude/longitude; meters and seconds remain intact', () => {
-  assert.deepEqual(normalizeRoute(data), { distance: 1234, duration: 120, points: [[36.1, 127.1], [36.2, 127.2]] })
+  assert.deepEqual(normalizeRoute(data), { distance: 1234, duration: 120, points: [[36.1, 127.1], [36.2, 127.2]], segments: [[[36.1, 127.1], [36.2, 127.2]]] })
   assert.throws(() => normalizeRoute({ routes: [{ result_code: 101 }] }), /경로를 찾지/)
   assert.throws(() => normalizeRoute({ routes: [{ result_code: 0 }] }), /상세 데이터/)
 })
