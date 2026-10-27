@@ -46,6 +46,27 @@ export function validPoint(p) {
   return p && Number.isFinite(p.lat) && Number.isFinite(p.lng) && Math.abs(p.lat) <= 90 && Math.abs(p.lng) <= 180
 }
 
+export async function lookupRegion(lat, lng, key, fetcher = fetch) {
+  if (!validPoint({ lat, lng })) throw new ApiError(400, '유효하지 않은 좌표입니다.')
+  const url = new URL('https://dapi.kakao.com/v2/local/geo/coord2regioncode.json')
+  url.search = new URLSearchParams({ x: String(lng), y: String(lat) }).toString()
+  const data = await kakaoJson(url, key, fetcher)
+  const region = data.documents?.find(item => item.region_type === 'H') || data.documents?.[0]
+  if (!region?.region_1depth_name) return null
+  return [region.region_1depth_name, region.region_2depth_name].filter(Boolean).join(' ').slice(0, 60)
+}
+
+export async function lookupRouteRegions(params, key, fetcher = fetch) {
+  const values = ['startLat', 'startLng', 'endLat', 'endLng'].map(k => params.get(k))
+  if (values.some(v => v === null || v.trim() === '')) throw new ApiError(400, '출발지와 목적지의 좌표가 필요합니다.')
+  const [startLat, startLng, endLat, endLng] = values.map(Number)
+  const [startRegion, destinationRegion] = await Promise.all([
+    lookupRegion(startLat, startLng, key, fetcher),
+    lookupRegion(endLat, endLng, key, fetcher),
+  ])
+  return { startRegion, destinationRegion }
+}
+
 export function normalizeRoute(data, index = 0) {
   const route = data.routes?.[index]
   if (!route || route.result_code !== 0) throw new ApiError(422, '이 두 위치를 잇는 자동차 경로를 찾지 못했습니다. 도로 가까운 위치를 다시 선택해 주세요.')
@@ -125,7 +146,8 @@ export async function handleApi(req, res, kind, key) {
       throw new ApiError(405, 'GET 요청만 지원합니다.')
     }
     const params = new URL(req.url, 'http://localhost').searchParams
-    const data = kind === 'places' ? { places: await searchPlaces(params.get('query'), key) } : await getDirections(params, key)
+    const data = kind === 'places' ? { places: await searchPlaces(params.get('query'), key) }
+      : kind === 'regions' ? await lookupRouteRegions(params, key) : await getDirections(params, key)
     res.statusCode = 200
     res.end(JSON.stringify(data))
   } catch (error) {

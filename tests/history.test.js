@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { makeAnalysisRecord } from '../src/analysisHistory.js'
+import { broadRegion, makeAnalysisRecord } from '../src/analysisHistory.js'
 
 test('history stores regional summary and scores without exact addresses, coordinates or geometry', () => {
   const route = {
@@ -15,4 +15,10 @@ test('history stores regional summary and scores without exact addresses, coordi
   assert.equal(record.candidates[0].risk, 7)
   const saved = JSON.stringify(record)
   for (const privateValue of ['둔산로', '대학로', '36.35', '127.38', '우리집', '학교', 'points']) assert.ok(!saved.includes(privateValue))
+})
+
+test('short Kakao addresses and coordinate-derived regions retain only district-level data', () => {
+  assert.equal(broadRegion({ address: '대전 서구 둔산로 12' }), '대전광역시 서구')
+  assert.equal(broadRegion({ address: '지도에서 선택한 위치', region: '대전광역시 유성구', lat: 36.36 }), '대전광역시 유성구')
+  assert.equal(broadRegion({ address: '지도에서 선택한 위치' }), '지역 미상')
 })

@@ -126,9 +126,10 @@ function App() {
         if (!response.ok) throw new Error(data.error || '조회에 실패했습니다.')
         return data
       }
-      const [directions, accidents] = await Promise.allSettled([
+      const [directions, accidents, regions] = await Promise.allSettled([
         fetchJson(`/api/directions?${params}`),
         fetchJson(`/api/accidents?year=${dataYear}`),
+        fetchJson(`/api/regions?${params}`),
       ])
       if (directions.status === 'rejected') throw directions.reason
       const data = { ...directions.value,
@@ -137,7 +138,11 @@ function App() {
       }
       if (!controller.signal.aborted) {
         setShowMap(false)
-        const result = { ...data, start: startPoint, destination: endPoint }
+        const regionData = regions.status === 'fulfilled' ? regions.value : {}
+        const result = { ...data,
+          start: { ...startPoint, region: regionData.startRegion },
+          destination: { ...endPoint, region: regionData.destinationRegion },
+        }
         setActualRoute(result)
         setMessage(data.accidentError ? '빠른 경로는 조회됐지만 사고 데이터 연결을 확인해야 합니다.' : '')
         if (supabase) {

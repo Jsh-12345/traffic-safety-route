@@ -13,7 +13,7 @@ export default defineConfig(({ mode }) => {
         url: process.env.VITE_SUPABASE_URL || env.VITE_SUPABASE_URL,
         key: process.env.VITE_SUPABASE_PUBLISHABLE_KEY || env.VITE_SUPABASE_PUBLISHABLE_KEY || env.VITE_SUPABASE_ANON_KEY,
       })
-      const kind = path === '/api/places' ? 'places' : path === '/api/directions' ? 'directions' : null
+      const kind = path === '/api/places' ? 'places' : path === '/api/directions' ? 'directions' : path === '/api/regions' ? 'regions' : null
       if (!kind) return next()
       return handleApi(req, res, kind, process.env.KAKAO_REST_API_KEY || env.KAKAO_REST_API_KEY)
     })

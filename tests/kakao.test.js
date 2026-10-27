@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { getDirections, normalizeRoute, searchPlaces, handleApi } from '../server/kakao.js'
+import { getDirections, normalizeRoute, searchPlaces, handleApi, lookupRouteRegions } from '../server/kakao.js'
 import { calculateHazardScore } from '../src/riskScore.js'
 
 const data = { routes: [{ result_code: 0, summary: { distance: 1234, duration: 120 }, sections: [{ roads: [{ vertexes: [127.1, 36.1, 127.2, 36.2] }] }] }] }
@@ -40,4 +40,14 @@ test('missing key, unauthorized and quota errors explain recovery without disclo
 })
 test('previous 1/3/15 risk weights remain intact', () => {
   assert.equal(calculateHazardScore({ accidents: 5, injuries: 5, fatalities: 1 }), 35)
+})
+test('coordinates resolve to district only through Kakao server API', async () => {
+  const params = new URLSearchParams({ startLat: '36.35', startLng: '127.38', endLat: '36.36', endLng: '127.39' })
+  const result = await lookupRouteRegions(params, 'test-only', async (url, options) => {
+    assert.equal(url.pathname, '/v2/local/geo/coord2regioncode.json')
+    assert.equal(options.headers.Authorization, 'KakaoAK test-only')
+    const second = url.searchParams.get('y') === '36.36'
+    return { ok: true, json: async () => ({ documents: [{ region_type: 'H', region_1depth_name: '대전광역시', region_2depth_name: second ? '유성구' : '서구', region_3depth_name: '둔산동' }] }) }
+  })
+  assert.deepEqual(result, { startRegion: '대전광역시 서구', destinationRegion: '대전광역시 유성구' })
 })
