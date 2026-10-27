@@ -1,4 +1,5 @@
 import { ApiError } from './kakao.js'
+import { getStoredAccidents } from './accidentStore.js'
 
 export const DISTRICTS = ['110', '140', '170', '200', '230'] // 대전 동구·중구·서구·유성구·대덕구
 const cache = new Map()
@@ -92,12 +93,17 @@ export async function getAccidents(params, rawKey, fetcher = fetch) {
   try { return await promise } finally { pending.delete(cacheKey) }
 }
 
-export async function handleAccidents(req, res, key) {
+export async function handleAccidents(req, res, key, database = {}) {
   res.setHeader('Content-Type', 'application/json; charset=utf-8')
   res.setHeader('Cache-Control', 'no-store')
   try {
     if (req.method !== 'GET') { res.setHeader('Allow', 'GET'); throw new ApiError(405, 'GET 요청만 지원합니다.') }
-    const data = await getAccidents(new URL(req.url, 'http://localhost').searchParams, key)
+    const params = new URL(req.url, 'http://localhost').searchParams
+    const year = Number(params.get('year') || '2024')
+    if (!Number.isInteger(year) || year < 2017 || year > 2024) throw new ApiError(400, '조회 연도는 2017~2024년으로 선택하세요.')
+    let stored = null
+    try { stored = await getStoredAccidents(year, database.url, database.key) } catch { /* DB 장애 때는 기존 API를 사용합니다. */ }
+    const data = stored || await getAccidents(params, key)
     res.statusCode = 200
     res.end(JSON.stringify(data))
   } catch (error) {

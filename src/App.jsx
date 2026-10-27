@@ -3,6 +3,9 @@ import './App.css'
 import MapSelector from './MapSelector'
 import PlaceInput from './PlaceInput'
 import LiveComparison from './LiveComparison'
+import AnalysisHistory from './AnalysisHistory.jsx'
+import { makeAnalysisRecord } from './analysisHistory.js'
+import { supabase } from './supabaseClient.js'
 
 const routeOptions = [
   {
@@ -35,6 +38,8 @@ function App() {
   const [endPoint, setEndPoint] = useState(null)
   const [actualRoute, setActualRoute] = useState(null)
   const [loading, setLoading] = useState(false)
+  const [historyRefresh, setHistoryRefresh] = useState(0)
+  const [saveNotice, setSaveNotice] = useState('')
   const requestRef = useRef(null)
   useEffect(() => () => requestRef.current?.abort(), [])
   useEffect(() => {
@@ -46,6 +51,7 @@ function App() {
     setActualRoute(null)
     setLoading(false)
     setMessage('')
+    setSaveNotice('')
   }
   const changeText = (target, value) => {
     invalidate()
@@ -131,8 +137,21 @@ function App() {
       }
       if (!controller.signal.aborted) {
         setShowMap(false)
-        setActualRoute({ ...data, start: startPoint, destination: endPoint })
+        const result = { ...data, start: startPoint, destination: endPoint }
+        setActualRoute(result)
         setMessage(data.accidentError ? '빠른 경로는 조회됐지만 사고 데이터 연결을 확인해야 합니다.' : '')
+        if (supabase) {
+          const { data: auth, error: authError } = await supabase.auth.getUser()
+          if (authError || !auth.user) setSaveNotice('로그인 상태를 확인하지 못해 분석 기록을 저장하지 못했습니다.')
+          else {
+            const record = makeAnalysisRecord(result, routeType, safetyLevel, auth.user.id, dataYear)
+            const { error: saveError } = await supabase.from('route_analyses').insert(record)
+            if (!controller.signal.aborted) {
+              setSaveNotice(saveError ? `기록 저장 실패: ${saveError.message}` : '분석 결과를 지역 단위로 저장했습니다.')
+              if (!saveError) setHistoryRefresh(previous => previous + 1)
+            }
+          }
+        }
       }
     } catch (error) {
       if (!controller.signal.aborted) setMessage(error.message)
@@ -271,6 +290,8 @@ function App() {
       </section>
 
       {actualRoute && <LiveComparison route={actualRoute} safetyLevel={safetyLevel} />}
+      {actualRoute && saveNotice && <p className="save-notice" role="status">{saveNotice}</p>}
+      <AnalysisHistory refreshKey={historyRefresh} />
 
       <p className="development-note">
         장소 검색: 카카오 · 자동차 경로: 카카오모빌리티 · 배경 지도: OpenStreetMap.
