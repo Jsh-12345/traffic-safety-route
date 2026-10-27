@@ -10,7 +10,7 @@ export default function AnalysisHistory({ refreshKey }) {
     if (!supabase) return
     setLoading(true)
     const { data, error } = await supabase.from('route_analyses')
-      .select('id,created_at,start_region,destination_region,data_year,route_type,safety_level,accident_data_available,recommended_route,candidates')
+      .select('id,created_at,start_region,destination_region,start_label,destination_label,start_address,destination_address,start_lat,start_lng,destination_lat,destination_lng,data_year,route_type,safety_level,accident_data_available,recommended_route,candidates')
       .order('created_at', { ascending: false }).limit(20)
     setLoading(false)
     if (error) { setNotice(`기록을 읽지 못했습니다: ${error.message}`); return }
@@ -31,15 +31,20 @@ export default function AnalysisHistory({ refreshKey }) {
   return <section className="search-card history-panel" aria-label="이전 분석 기록">
     <div className="history-heading"><div><p className="eyebrow">Supabase 기록</p><h2>이전 분석 결과</h2></div>
       <button type="button" onClick={load} disabled={loading}>{loading ? '불러오는 중…' : '새로고침'}</button></div>
-    <p className="history-note">정확한 출발지·목적지와 좌표는 저장하지 않습니다. 최근 20건의 지역 단위 결과 수치만 다시 볼 수 있습니다.</p>
+    <p className="history-note">최근 20건의 결과를 볼 수 있습니다. 정확한 장소·주소·좌표는 분석할 때 저장을 선택한 기록에만 표시됩니다.</p>
     {notice && <p role="status">{notice}</p>}
     {!loading && !records.length && !notice && <p>저장된 분석 기록이 없습니다.</p>}
     <ul className="history-list">{records.map(record => <li key={record.id}>
-      <div className="history-item"><div><strong>{record.start_region} → {record.destination_region}</strong>
+      <div className="history-item"><div><strong>{record.start_label || record.start_region} → {record.destination_label || record.destination_region}</strong>
         <small>{new Date(record.created_at).toLocaleString('ko-KR')} · {record.data_year}년 자료 · 안전 우선 {record.safety_level}%</small></div>
         <div className="history-actions"><button type="button" onClick={() => setSelected(selected === record.id ? null : record.id)} aria-expanded={selected === record.id}>결과 {selected === record.id ? '접기' : '보기'}</button>
           <button type="button" onClick={() => remove(record.id)} aria-label="이 기록 삭제">삭제</button></div></div>
-      {selected === record.id && <div className="history-detail"><p>추천 경로: {record.recommended_route} · {record.accident_data_available ? '사고 자료 반영' : '사고 자료 없음'}</p>
+      {selected === record.id && <div className="history-detail">
+        {record.start_label && <p>출발지: {record.start_address || record.start_label}
+          {record.start_lat != null && record.start_lng != null && ` · 좌표 ${record.start_lat}, ${record.start_lng}`}</p>}
+        {record.destination_label && <p>목적지: {record.destination_address || record.destination_label}
+          {record.destination_lat != null && record.destination_lng != null && ` · 좌표 ${record.destination_lat}, ${record.destination_lng}`}</p>}
+        <p>추천 경로: {record.recommended_route} · {record.accident_data_available ? '사고 자료 반영' : '사고 자료 없음'}</p>
         <ul>{record.candidates.map((candidate, index) => <li key={`${candidate.id}-${index}`}><strong>{candidate.id === record.recommended_route ? '추천 · ' : ''}후보 {index + 1}</strong>
           {' '}약 {Math.ceil(candidate.duration / 60)}분 · {(candidate.distance / 1000).toFixed(1)}km · 위험점수 {candidate.risk ?? '자료 없음'}</li>)}</ul>
         <p>저장 당시의 결과 요약입니다. 현재 교통상황으로 다시 분석하려면 새 경로를 검색하세요.</p></div>}

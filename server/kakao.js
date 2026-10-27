@@ -56,6 +56,15 @@ export async function lookupRegion(lat, lng, key, fetcher = fetch) {
   return [region.region_1depth_name, region.region_2depth_name].filter(Boolean).join(' ').slice(0, 60)
 }
 
+export async function lookupAddress(lat, lng, key, fetcher = fetch) {
+  if (!validPoint({ lat, lng })) throw new ApiError(400, '유효하지 않은 좌표입니다.')
+  const url = new URL('https://dapi.kakao.com/v2/local/geo/coord2address.json')
+  url.search = new URLSearchParams({ x: String(lng), y: String(lat) }).toString()
+  const data = await kakaoJson(url, key, fetcher)
+  const item = data.documents?.[0]
+  return item?.road_address?.address_name || item?.address?.address_name || null
+}
+
 export async function lookupRouteRegions(params, key, fetcher = fetch) {
   const values = ['startLat', 'startLng', 'endLat', 'endLng'].map(k => params.get(k))
   if (values.some(v => v === null || v.trim() === '')) throw new ApiError(400, '출발지와 목적지의 좌표가 필요합니다.')
@@ -64,7 +73,15 @@ export async function lookupRouteRegions(params, key, fetcher = fetch) {
     lookupRegion(startLat, startLng, key, fetcher),
     lookupRegion(endLat, endLng, key, fetcher),
   ])
-  return { startRegion, destinationRegion }
+  const [startAddressResult, destinationAddressResult] = await Promise.allSettled([
+    lookupAddress(startLat, startLng, key, fetcher),
+    lookupAddress(endLat, endLng, key, fetcher),
+  ])
+  return {
+    startRegion, destinationRegion,
+    startAddress: startAddressResult.status === 'fulfilled' ? startAddressResult.value : null,
+    destinationAddress: destinationAddressResult.status === 'fulfilled' ? destinationAddressResult.value : null,
+  }
 }
 
 export function normalizeRoute(data, index = 0) {

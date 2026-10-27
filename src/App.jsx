@@ -31,6 +31,7 @@ function App() {
   const [routeType, setRouteType] = useState('balanced')
   const [safetyLevel, setSafetyLevel] = useState(50)
   const [dataYear, setDataYear] = useState('2024')
+  const [saveExactLocation, setSaveExactLocation] = useState(false)
   const [message, setMessage] = useState('')
   const [showMap, setShowMap] = useState(false)
 
@@ -102,6 +103,7 @@ function App() {
   }
   const handleSubmit = async (event) => {
     event.preventDefault()
+    const includeExactLocation = saveExactLocation
     invalidate()
     if (!start.trim() || !destination.trim()) {
       setMessage('출발지와 목적지를 모두 입력해 주세요.')
@@ -140,8 +142,12 @@ function App() {
         setShowMap(false)
         const regionData = regions.status === 'fulfilled' ? regions.value : {}
         const result = { ...data,
-          start: { ...startPoint, region: regionData.startRegion },
-          destination: { ...endPoint, region: regionData.destinationRegion },
+          start: { ...startPoint, region: regionData.startRegion,
+            label: startPoint.address === '지도에서 선택한 위치' && regionData.startAddress ? regionData.startAddress : startPoint.label,
+            address: startPoint.address === '지도에서 선택한 위치' ? regionData.startAddress : startPoint.address },
+          destination: { ...endPoint, region: regionData.destinationRegion,
+            label: endPoint.address === '지도에서 선택한 위치' && regionData.destinationAddress ? regionData.destinationAddress : endPoint.label,
+            address: endPoint.address === '지도에서 선택한 위치' ? regionData.destinationAddress : endPoint.address },
         }
         setActualRoute(result)
         setMessage(data.accidentError ? '빠른 경로는 조회됐지만 사고 데이터 연결을 확인해야 합니다.' : '')
@@ -149,10 +155,10 @@ function App() {
           const { data: auth, error: authError } = await supabase.auth.getUser()
           if (authError || !auth.user) setSaveNotice('로그인 상태를 확인하지 못해 분석 기록을 저장하지 못했습니다.')
           else {
-            const record = makeAnalysisRecord(result, routeType, safetyLevel, auth.user.id, dataYear)
+            const record = makeAnalysisRecord(result, routeType, safetyLevel, auth.user.id, dataYear, includeExactLocation)
             const { error: saveError } = await supabase.from('route_analyses').insert(record)
             if (!controller.signal.aborted) {
-              setSaveNotice(saveError ? `기록 저장 실패: ${saveError.message}` : '분석 결과를 지역 단위로 저장했습니다.')
+              setSaveNotice(saveError ? `기록 저장 실패: ${saveError.message}` : includeExactLocation ? '분석 결과와 정확한 위치를 내 계정에 저장했습니다.' : '분석 결과를 지역 단위로 저장했습니다.')
               if (!saveError) setHistoryRefresh(previous => previous + 1)
             }
           }
@@ -281,6 +287,12 @@ function App() {
               {['2024', '2023', '2022', '2021'].map(year => <option key={year} value={year}>{year}년</option>)}
             </select>
           </div>
+          <label className="exact-location-option" htmlFor="save-exact-location">
+            <input id="save-exact-location" type="checkbox" checked={saveExactLocation}
+              onChange={event => setSaveExactLocation(event.target.checked)} />
+            <span><strong>정확한 장소·주소·좌표를 내 분석 기록에 저장</strong>
+              <small>선택한 경우에만 저장하며, 로그인한 본인만 조회하고 기록을 삭제할 수 있습니다. 지도에서 직접 찍은 점은 주소 대신 좌표가 저장될 수 있습니다.</small></span>
+          </label>
           <p className="api-note">빠른 경로는 안전 가중치 0%, 안전 우선은 100%입니다. 조회 후 슬라이더를 바꾸면 받은 후보들의 추천 순위가 바로 갱신됩니다. 사고 데이터는 대전의 법규위반별 사고 다발지역을 사용합니다.</p>
           <button className="analyze-button" type="submit" disabled={loading}>
             {loading ? '경로 조회 중…' : '실제 경로 분석하기'}

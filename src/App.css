@@ -443,4 +443,9 @@ legend {
 .history-detail { margin-top: .8rem; padding: 1rem; background: #f2f8f5; border-radius: .7rem; }
 .history-detail ul { padding-left: 1.3rem; line-height: 1.8; }
 .save-notice { max-width: 1180px; margin: 1rem auto; padding: .8rem 1rem; color: #075b44; background: #eef8f1; border-radius: .6rem; }
+.exact-location-option { display: flex; align-items: flex-start; gap: .8rem; margin: 1.1rem 0; padding: 1rem; border: 1px solid #d0d5dd; border-radius: .7rem; background: #f8fafc; cursor: pointer; }
+.exact-location-option input { flex: none; width: 1.2rem; height: 1.2rem; margin: .15rem 0 0; accent-color: #087f5b; }
+.exact-location-option strong, .exact-location-option small { display: block; }
+.exact-location-option small { margin-top: .35rem; color: #475467; font-size: .85rem; line-height: 1.5; }
+.history-detail p { overflow-wrap: anywhere; }
 @media (max-width: 650px) { .history-item { align-items: flex-start; flex-direction: column; } .history-actions { width: 100%; justify-content: flex-start; } }

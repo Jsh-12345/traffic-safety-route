@@ -17,7 +17,7 @@ export function broadRegion(point) {
   return '지역 미상'
 }
 
-export function makeAnalysisRecord(route, routeType, safetyLevel, userId, dataYear) {
+export function makeAnalysisRecord(route, routeType, safetyLevel, userId, dataYear, saveExactLocation = false) {
   const hasAccidents = !!route.accidentData?.hazards?.length
   const candidates = route.routes || [route]
   const scored = hasAccidents ? candidates.map(candidate => scoreRoute(candidate, route.accidentData.hazards)) : candidates
@@ -26,12 +26,20 @@ export function makeAnalysisRecord(route, routeType, safetyLevel, userId, dataYe
     user_id: userId,
     start_region: broadRegion(route.start),
     destination_region: broadRegion(route.destination),
+    start_label: saveExactLocation ? String(route.start.label || '') : null,
+    destination_label: saveExactLocation ? String(route.destination.label || '') : null,
+    start_address: saveExactLocation && route.start.address !== '지도에서 선택한 위치' ? String(route.start.address || '') : null,
+    destination_address: saveExactLocation && route.destination.address !== '지도에서 선택한 위치' ? String(route.destination.address || '') : null,
+    start_lat: saveExactLocation ? route.start.lat : null,
+    start_lng: saveExactLocation ? route.start.lng : null,
+    destination_lat: saveExactLocation ? route.destination.lat : null,
+    destination_lng: saveExactLocation ? route.destination.lng : null,
     data_year: route.accidentData?.year || Number(dataYear),
     route_type: routeType,
     safety_level: Number(safetyLevel),
     accident_data_available: hasAccidents,
     recommended_route: String(ranked[0].id),
-    // 주소·좌표·경로선은 저장하지 않고 결과 수치만 보관합니다.
+    // 경로선은 저장하지 않고, 상세 위치는 사용자가 체크한 경우에만 저장합니다.
     candidates: ranked.map(candidate => ({
       id: String(candidate.id),
       duration: Math.round(candidate.duration),

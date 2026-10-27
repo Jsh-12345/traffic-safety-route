@@ -44,10 +44,14 @@ test('previous 1/3/15 risk weights remain intact', () => {
 test('coordinates resolve to district only through Kakao server API', async () => {
   const params = new URLSearchParams({ startLat: '36.35', startLng: '127.38', endLat: '36.36', endLng: '127.39' })
   const result = await lookupRouteRegions(params, 'test-only', async (url, options) => {
-    assert.equal(url.pathname, '/v2/local/geo/coord2regioncode.json')
     assert.equal(options.headers.Authorization, 'KakaoAK test-only')
     const second = url.searchParams.get('y') === '36.36'
+    if (url.pathname === '/v2/local/geo/coord2address.json') {
+      return { ok: true, json: async () => ({ documents: [{ road_address: { address_name: second ? '대전 유성구 대학로 99' : '대전 동구 중앙로 215' } }] }) }
+    }
+    assert.equal(url.pathname, '/v2/local/geo/coord2regioncode.json')
     return { ok: true, json: async () => ({ documents: [{ region_type: 'H', region_1depth_name: '대전광역시', region_2depth_name: second ? '유성구' : '서구', region_3depth_name: '둔산동' }] }) }
   })
-  assert.deepEqual(result, { startRegion: '대전광역시 서구', destinationRegion: '대전광역시 유성구' })
+  assert.deepEqual(result, { startRegion: '대전광역시 서구', destinationRegion: '대전광역시 유성구',
+    startAddress: '대전 동구 중앙로 215', destinationAddress: '대전 유성구 대학로 99' })
 })
