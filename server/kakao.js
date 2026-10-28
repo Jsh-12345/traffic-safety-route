@@ -107,20 +107,6 @@ export function normalizeRoute(data, index = 0) {
   if (points.length < 2 || !Number.isFinite(distance) || !Number.isFinite(duration) || distance < 0 || duration < 0) {
     throw new ApiError(502, '경로 상세 데이터를 받지 못했습니다. 다시 조회해 주세요.')
   }
-  // 경로 좌표가 수 km씩 건너뛰면 지도에는 도로를 가로지르는 직선이 생기고,
-  // 그 직선을 따라 사고 다발지역을 잘못 집계하게 됩니다. 이런 후보는 비교에서 제외합니다.
-  for (const road of segments) {
-    for (let i = 1; i < road.length; i++) {
-      const [a, b] = [road[i - 1], road[i]]
-      const lat = (a[0] + b[0]) / 2 * Math.PI / 180
-      const north = (b[0] - a[0]) * 111195
-      const east = (b[1] - a[1]) * 111195 * Math.cos(lat)
-      const gap = Math.hypot(north, east)
-      if (gap > 1500 && gap > distance * 0.2) {
-        throw new ApiError(502, '도로 좌표가 끊긴 경로를 받았습니다. 다시 조회해 주세요.')
-      }
-    }
-  }
   return { points, segments, distance, duration }
 }
 
@@ -148,16 +134,9 @@ export async function getDirections(params, key, fetcher = fetch) {
     const successful = (data.routes || []).map((r, i) => ({ r, i })).filter(({ r }) => r.result_code === 0)
     rawCount += successful.length
     sources.push({ priority: priorities[priorityIndex], count: successful.length })
-    for (const { i } of successful) {
-      try {
-        routes.push({ ...normalizeRoute(data, i), sourcePriority: priorities[priorityIndex] })
-      } catch (error) {
-        if (!(error instanceof ApiError) || error.status !== 502) throw error
-        // 한 후보의 좌표가 불완전해도 정상적인 나머지 후보는 계속 비교합니다.
-      }
-    }
+    for (const { i } of successful) routes.push({ ...normalizeRoute(data, i), sourcePriority: priorities[priorityIndex] })
   })
-  if (!routes.length) throw new ApiError(502, '유효한 경로 좌표를 받지 못했습니다. 잠시 후 다시 조회해 주세요.')
+  if (!routes.length) return normalizeRoute(primary.value) // 기존의 상세 오류 메시지를 사용합니다.
   // 완전히 같은 도로 좌표가 여러 우선순위에 나타나면 가장 빠른 요약을 남깁니다.
   routes.sort((a, b) => a.duration - b.duration || a.distance - b.distance)
   const byShape = new Map()

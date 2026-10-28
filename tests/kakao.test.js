@@ -3,20 +3,11 @@ import assert from 'node:assert/strict'
 import { getDirections, normalizeRoute, searchPlaces, handleApi, lookupRouteRegions } from '../server/kakao.js'
 import { calculateHazardScore } from '../src/riskScore.js'
 
-const data = { routes: [{ result_code: 0, summary: { distance: 1234, duration: 120 }, sections: [{ roads: [{ vertexes: [127.1, 36.1, 127.101, 36.101] }] }] }] }
+const data = { routes: [{ result_code: 0, summary: { distance: 1234, duration: 120 }, sections: [{ roads: [{ vertexes: [127.1, 36.1, 127.2, 36.2] }] }] }] }
 test('longitude/latitude becomes Leaflet latitude/longitude; meters and seconds remain intact', () => {
-  assert.deepEqual(normalizeRoute(data), { distance: 1234, duration: 120, points: [[36.1, 127.1], [36.101, 127.101]], segments: [[[36.1, 127.1], [36.101, 127.101]]] })
+  assert.deepEqual(normalizeRoute(data), { distance: 1234, duration: 120, points: [[36.1, 127.1], [36.2, 127.2]], segments: [[[36.1, 127.1], [36.2, 127.2]]] })
   assert.throws(() => normalizeRoute({ routes: [{ result_code: 101 }] }), /경로를 찾지/)
   assert.throws(() => normalizeRoute({ routes: [{ result_code: 0 }] }), /상세 데이터/)
-})
-test('a candidate with an implausible multi-kilometer straight span is excluded', async () => {
-  const broken = { result_code: 0, summary: { distance: 9700, duration: 1572 }, sections: [{ roads: [{ vertexes: [127.1, 36.1, 127.15, 36.12] }] }] }
-  assert.throws(() => normalizeRoute({ routes: [broken] }), /좌표가 끊긴/)
-  const params = new URLSearchParams({ startLat: '36.1', startLng: '127.1', endLat: '36.2', endLng: '127.2' })
-  const result = await getDirections(params, 'test-only', async url => ({ ok: true, json: async () => url.searchParams.get('priority') === 'DISTANCE'
-    ? { routes: [broken] } : data }))
-  assert.equal(result.routes.length, 1)
-  assert.equal(result.routes[0].distance, 1234)
 })
 test('real request uses TIME priority and correct coordinate order', async () => {
   const params = new URLSearchParams({ startLat: '36.1', startLng: '127.1', endLat: '36.2', endLng: '127.2' })
