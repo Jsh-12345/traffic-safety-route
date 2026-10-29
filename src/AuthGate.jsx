@@ -1,10 +1,12 @@
 import { useEffect, useState } from 'react'
 import { authConfigured, supabase } from './supabaseClient'
 import './AuthGate.css'
+import { AccessContext } from './AccessContext.js'
 import NicknameSettings from './NicknameSettings.jsx'
 
 function AuthGate({ children }) {
   const [session, setSession] = useState(null)
+  const [guest, setGuest] = useState(false)
   const [checking, setChecking] = useState(authConfigured)
   const [mode, setMode] = useState('login')
   const [email, setEmail] = useState('')
@@ -18,6 +20,7 @@ function AuthGate({ children }) {
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, nextSession) => {
       if (!active) return
       setSession(nextSession)
+      if (nextSession) setGuest(false)
       if (event === 'PASSWORD_RECOVERY') setMode('update')
       setChecking(false)
     })
@@ -79,7 +82,7 @@ function AuthGate({ children }) {
   if (checking) return <div className="auth-page"><p role="status">로그인 상태 확인 중…</p></div>
 
   if (session && mode !== 'update') {
-    return <>
+    return <AccessContext.Provider value={{ isGuest: false }}>
       <div className="auth-toolbar">
         <NicknameSettings key={session.user.id} user={session.user} />
         <button type="button" onClick={async () => {
@@ -89,8 +92,14 @@ function AuthGate({ children }) {
       </div>
       {notice && <p className="auth-toolbar-notice" role="status">{notice}</p>}
       <div key={session.user.id}>{children}</div>
-    </>
+    </AccessContext.Provider>
   }
+
+  if (guest && mode !== 'update') return <AccessContext.Provider value={{ isGuest: true }}>
+    <div className="auth-toolbar"><span>비회원 이용 중 · 분석 기록은 저장되지 않습니다.</span>
+      <button type="button" onClick={() => { setGuest(false); switchMode('login') }}>로그인 / 회원가입</button></div>
+    <div key="guest">{children}</div>
+  </AccessContext.Provider>
 
   return <main className="auth-page">
     <section className="auth-card">
@@ -113,6 +122,10 @@ function AuthGate({ children }) {
           <button type="button" onClick={() => switchMode('signup')}>회원가입</button>
           <button type="button" onClick={() => switchMode('reset')}>비밀번호를 잊었나요?</button>
         </>}
+      </div>}
+      {mode !== 'update' && <div className="guest-entry">
+        <button type="button" className="guest-start" disabled={busy} onClick={() => { setPassword(''); setNotice(''); setGuest(true) }}>비회원으로 시작하기</button>
+        <small>로그인 없이 경로를 비교할 수 있습니다. 기록 저장은 로그인 후 이용하세요.</small>
       </div>}
     </section>
   </main>

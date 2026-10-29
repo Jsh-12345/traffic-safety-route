@@ -15,7 +15,7 @@ export default function LiveComparison({ route, safetyLevel, archived = null }) 
   const currentPositionRef = useRef(null)
   const currentLocationLayerRef = useRef(null)
   const [highlightedId, setHighlightedId] = useState(null)
-  const [riskView, setRiskView] = useState(true)
+  const [riskView, setRiskView] = useState(false)
   const [locating, setLocating] = useState(false)
   const [locationMessage, setLocationMessage] = useState('')
   const ready = !!route.accidentData?.hazards.length
@@ -29,11 +29,18 @@ export default function LiveComparison({ route, safetyLevel, archived = null }) 
   const fastest = useMemo(() => [...ranked].sort((a, b) => a.duration - b.duration || a.distance - b.distance)[0], [ranked])
   const secondCard = recommended.id === fastest.id ? ranked.find(r => r.id !== fastest.id) : recommended
   const hazards = useMemo(() => ready ? [...new Map(ranked.flatMap(r => r.hazards).map(h => [h.id, h])).values()] : [], [ranked, ready])
+  const routeStyles = useMemo(() => {
+    const colors = ['#2563eb', '#087f5b', '#d97706', '#9333ea', '#be185d', '#0891b2']
+    const dashes = [null, '12 6', '3 7', '14 5 3 5']
+    return Object.fromEntries([...ranked].sort((a, b) => a.id.localeCompare(b.id, undefined, { numeric: true })).map((r, i) =>
+      [r.id, { color: colors[i % colors.length], dashArray: dashes[Math.floor(i / colors.length) % dashes.length], weight: 6, opacity: .9 }]))
+  }, [ranked])
+  const routeLabel = r => `후보 ${r.id.replace('route-', '')}${r.id === fastest.id ? ' · 빠른 경로' : ''}${r.id === recommended.id ? ' · 추천' : ''}`
   const focused = ranked.find(r => r.id === highlightedId) || recommended
   const weights = archived?.weights || RISK_WEIGHTS
   const hazardScore = h => h.accidents * weights.accidents + h.injuries * weights.injuries + h.fatalities * weights.fatalities
   useEffect(() => {
-    const map = L.map(container.current, { scrollWheelZoom: false })
+    const map = L.map(container.current, { scrollWheelZoom: expanded })
     mapRef.current = map
     L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
       maxZoom: 19, attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
@@ -41,18 +48,20 @@ export default function LiveComparison({ route, safetyLevel, archived = null }) 
     const bounds = L.latLngBounds([])
     const draw = (candidate, options) => {
       if (riskView && candidate.id !== focused.id) options = { ...options, color: '#94a3b8', opacity: .4, weight: 4 }
-      for (const road of candidate.segments || [candidate.points]) L.polyline(road, options).addTo(map)
+      const label = document.createElement('span')
+      label.textContent = `후보 ${candidate.id.replace('route-', '')} · ${(candidate.duration / 60).toFixed(1)}분 · ${(candidate.distance / 1000).toFixed(1)}km`
+      for (const road of candidate.segments || [candidate.points]) L.polyline(road, options)
+        .bindTooltip(label).on('click', () => setHighlightedId(candidate.id)).addTo(map)
       candidate.points.forEach(p => bounds.extend(p))
     }
-    // 다른 후보를 먼저 그려 공유 구간에서는 대표 경로가 위에 오게 합니다.
-    ranked.filter(r => r.id !== fastest.id && r.id !== recommended.id)
-      .forEach(r => draw(r, { color: '#d97706', dashArray: '10 7', weight: 7, opacity: .9 }))
-    draw(fastest, { color: '#2563eb', weight: 5, opacity: .95 })
-    if (recommended.id !== fastest.id) draw(recommended, { color: '#087f5b', dashArray: '10 7', weight: 6, opacity: .95 })
+    // 후보별 고유 색상을 유지하고 공유 도로의 좌표는 옮기지 않습니다.
+    ranked.forEach(candidate => {
+      draw(candidate, routeStyles[candidate.id])
+    })
     const highlighted = ranked.find(r => r.id === highlightedId)
-    if (highlighted) {
+    if (highlighted && !riskView) {
       draw(highlighted, { color: '#fff', weight: 11, opacity: .95 })
-      draw(highlighted, { color: '#7c3aed', weight: 7, opacity: 1 })
+      draw(highlighted, { ...routeStyles[highlighted.id], weight: 7, opacity: 1 })
     }
     if (riskView) {
       // 선택 경로를 흰 테두리와 근접 구간 색상으로 구분합니다.
@@ -98,7 +107,7 @@ export default function LiveComparison({ route, safetyLevel, archived = null }) 
       routeBoundsRef.current = null
       currentLocationLayerRef.current = null
     }
-  }, [route, recommended, fastest, hazards, ranked, highlightedId, riskView, focused, ready, weights, expanded])
+  }, [route, recommended, fastest, hazards, ranked, highlightedId, riskView, focused, ready, weights, expanded, routeStyles])
 
   useEffect(() => {
     if (!expanded) return
@@ -138,6 +147,19 @@ export default function LiveComparison({ route, safetyLevel, archived = null }) 
         <button type="button" className="current-location-button" onClick={showCurrentLocation} disabled={locating}>{locating ? '위치 확인 중…' : '◎ 내 현재 위치 보기'}</button>
         <button type="button" onClick={() => mapRef.current?.fitBounds(routeBoundsRef.current, { padding: [35, 35] })}>경로 전체 보기</button>
       </div>
+      <div className="map-view-switch" role="group" aria-label="경로 표시 방식">
+        <button type="button" aria-pressed={!riskView} onClick={() => {
+          setRiskView(false); setHighlightedId(null)
+          if (routeBoundsRef.current) mapRef.current?.fitBounds(routeBoundsRef.current, { padding: [36, 36], maxZoom: 16 })
+        }}>모든 경로 한눈에 보기</button>
+        <button type="button" aria-pressed={riskView} onClick={() => setRiskView(true)}>선택 경로 위험 구간 보기</button>
+      </div>
+      <div className="candidate-map-legend" aria-label="후보 경로 선택">{ranked.map(r => <button type="button" key={r.id}
+        aria-pressed={highlightedId === r.id} onClick={() => setHighlightedId(highlightedId === r.id ? null : r.id)}>
+        <i style={{ borderColor: routeStyles[r.id].color, borderTopStyle: routeStyles[r.id].dashArray ? 'dashed' : 'solid' }} />{routeLabel(r)}</button>)}</div>
+      {riskView ? <p className="map-view-note"><strong>초록: 수집 자료에서 근접 지역 없음 · 주황: 사고다발지역 반경과 겹침 · 회색: 다른 후보</strong><br />{ready ? '선택 경로의 관련 지역만 표시합니다. 초록색도 안전을 보장하지 않습니다.' : '사고 자료가 없어 경로를 회색으로 표시합니다.'}</p>
+        : <p className="map-view-note">모든 후보를 색상별로 표시합니다. 같은 도로를 지나는 부분은 겹칠 수 있으니 위의 후보 버튼으로 강조해 비교하세요. 빨간 원은 사고다발지역입니다.</p>}
+      <small className="map-scroll-hint">{expanded ? '마우스 휠 또는 + / − 버튼으로 확대·축소하세요.' : '지도 확대·축소는 + / − 버튼을 사용하세요. 크게 보기에서는 마우스 휠도 사용할 수 있습니다.'}</small>
       {locationMessage && <p role="status" className="location-feedback">{locationMessage}</p>}
       <div ref={container} className="location-map" aria-label="실제 후보 경로와 사고 다발지역 지도" />
   </>
@@ -178,15 +200,6 @@ export default function LiveComparison({ route, safetyLevel, archived = null }) 
         <div className="risk-bars">{ranked.map(r => <div key={r.id}><span>후보 {r.id.replace('route-', '')}{r.id === recommended.id ? ' · 추천' : ''}</span>
           <progress value={r.risk} max={Math.max(1, ...ranked.map(x => x.risk))} aria-label={`${r.id} 위험점수 ${r.risk}`} /><b>{r.risk}점</b></div>)}</div>
         <small>막대가 짧을수록 수집된 사고 자료의 가중합이 낮습니다. 실제 사고 확률이 아닙니다.</small>
-      </div>}
-      <label className="risk-toggle"><input type="checkbox" checked={riskView} onChange={e => setRiskView(e.target.checked)} />선택 경로의 사고다발지역 근접 구간 보기</label>
-      {riskView && <p className="risk-legend"><strong>초록: 수집 자료에서 근접 지역 없음 · 주황: 사고다발지역 반경과 겹침 · 회색: 다른 후보</strong><br />{ready ? '현재 선택한 경로에 관련된 지역만 표시합니다. 초록색도 안전을 보장하지 않습니다.' : '사고 자료가 없어 경로를 회색으로 표시합니다.'}</p>}
-      {!riskView && <div className="route-legend" aria-label="지도 범례">
-        <span><i className="legend-line legend-blue" />빠른 경로</span>
-        {recommended.id !== fastest.id && <span><i className="legend-line legend-green" />추천 경로</span>}
-        {ranked.some(r => r.id !== fastest.id && r.id !== recommended.id) && <span><i className="legend-line legend-orange" />다른 후보</span>}
-        <span><i className="legend-line legend-purple" />선택한 경로</span>
-        <span><i className="legend-dot" />사고 다발지역</span>
       </div>}
       {expanded ? <dialog ref={dialogRef} className="map-dialog" aria-label="경로 지도 크게 보기" onCancel={event => { event.preventDefault(); setExpanded(false) }}>{mapPanel}</dialog> : <div className="map-panel">{mapPanel}</div>}
       {route.accidentError && <p role="alert" className="analysis-warning">사고 데이터 분석 불가: {route.accidentError} 빠른 경로만 제공합니다.</p>}

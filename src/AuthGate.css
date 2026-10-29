@@ -15,3 +15,7 @@
 .auth-notice, .auth-toolbar-notice { line-height: 1.5; overflow-wrap: anywhere; }
 .auth-toolbar { display: flex; justify-content: flex-end; align-items: center; gap: 14px; padding: 10px 24px; background: #e7f7f0; color: #172033; font-size: 14px; overflow-wrap: anywhere; }
 .auth-toolbar-notice { margin: 0; padding: 10px 24px; background: #fff6e8; }
+
+.guest-entry { margin-top: 22px; padding-top: 18px; border-top: 1px solid #dbe3e9; display: grid; gap: 10px; }
+.guest-start { width: 100%; padding: 12px; border: 1px solid #087f5b; border-radius: 10px; color: #087f5b; background: #fff; font: inherit; font-weight: 700; cursor: pointer; }
+.guest-entry small { color: #526277; line-height: 1.5; }

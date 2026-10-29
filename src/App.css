@@ -496,3 +496,13 @@ legend {
 
 .compact-cards { margin: 8px 0; }
 .compact-cards > summary { cursor:pointer; color:#075c43; font-weight:700; }
+
+.map-view-switch, .candidate-map-legend { display: flex; flex-wrap: wrap; gap: 8px; margin: 8px 0; flex-shrink: 0; }
+.map-view-switch button, .candidate-map-legend button { border: 1px solid #cbd5e1; border-radius: 8px; background: white; color: #26364a; padding: 7px 10px; font: inherit; font-size: 13px; cursor: pointer; }
+.map-view-switch button[aria-pressed="true"] { background: #e9f7f1; border-color: #087f5b; color: #086849; font-weight: 700; }
+.candidate-map-legend button[aria-pressed="true"] { outline: 2px solid #334155; outline-offset: 1px; }
+.candidate-map-legend i { display: inline-block; width: 24px; border-top: 4px solid; margin-right: 7px; vertical-align: middle; }
+.map-view-note { margin: 6px 0; font-size: 13px; line-height: 1.5; color: #334155; flex-shrink: 0; }
+.map-scroll-hint { display: block; color: #526277; margin-bottom: 8px; flex-shrink: 0; }
+.map-dialog { overflow-y: auto; }
+.actual-route .map-dialog .location-map { min-height: 180px; }

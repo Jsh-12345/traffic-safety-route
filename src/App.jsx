@@ -1,5 +1,6 @@
-import { useEffect, useRef, useState } from 'react'
+import { useContext, useEffect, useRef, useState } from 'react'
 import './App.css'
+import { AccessContext } from './AccessContext.js'
 import MapSelector from './MapSelector'
 import PlaceInput from './PlaceInput'
 import LiveComparison from './LiveComparison'
@@ -27,6 +28,7 @@ const routeOptions = [
 ]
 
 function App() {
+  const { isGuest } = useContext(AccessContext)
   const [start, setStart] = useState('')
   const [destination, setDestination] = useState('')
   const [routeType, setRouteType] = useState('balanced')
@@ -167,8 +169,9 @@ function App() {
         }
         setActualRoute(result)
         setMessage(data.accidentError ? '빠른 경로는 조회됐지만 사고 데이터 연결을 확인해야 합니다.' : '')
-        if (supabase) {
+        if (supabase && !isGuest) {
           const { data: auth, error: authError } = await supabase.auth.getUser()
+          if (controller.signal.aborted) return
           if (authError || !auth.user) setSaveNotice('로그인 상태를 확인하지 못해 분석 기록을 저장하지 못했습니다.')
           else {
             const record = makeAnalysisRecord(result, routeType, safetyLevel, auth.user.id, dataYear, includeExactLocation)
@@ -303,12 +306,13 @@ function App() {
               {['2024', '2023', '2022', '2021'].map(year => <option key={year} value={year}>{year}년</option>)}
             </select>
           </div>
-          <label className="exact-location-option" htmlFor="save-exact-location">
+          {!isGuest && <label className="exact-location-option" htmlFor="save-exact-location">
             <input id="save-exact-location" type="checkbox" checked={saveExactLocation}
               onChange={event => setSaveExactLocation(event.target.checked)} />
             <span><strong>장소·주소·좌표와 경로 지도를 내 분석 기록에 저장</strong>
               <small>선택하면 당시 후보 경로·사고 자료·점수도 함께 저장하며, 로그인한 본인만 조회하고 기록을 삭제할 수 있습니다. 지도에서 직접 찍은 점은 주소 대신 좌표가 저장될 수 있습니다.</small></span>
-          </label>
+          </label>}
+          {isGuest && <p className="api-note">비회원 분석 결과는 계정에 저장되지 않습니다. 로그인 전환이나 새로고침 시 현재 결과가 사라집니다.</p>}
           <p className="api-note">빠른 경로는 안전 가중치 0%, 안전 우선은 100%입니다. 조회 후 슬라이더를 바꾸면 받은 후보들의 추천 순위가 바로 갱신됩니다. 사고 데이터는 대전의 법규위반별 사고 다발지역을 사용합니다.</p>
           <button className="analyze-button" type="submit" disabled={loading}>
             {loading ? '경로 조회 중…' : '실제 경로 분석하기'}
@@ -330,7 +334,7 @@ function App() {
         <ul>{historyRecord.candidates.map(c => <li key={c.id}>{c.id === historyRecord.recommended_route ? '추천 · ' : ''}{c.id} · {(c.duration / 60).toFixed(1)}분 · {(c.distance / 1000).toFixed(1)}km · 위험점수 {c.risk ?? '자료 없음'}</li>)}</ul>
       </section>}
       {actualRoute && saveNotice && <p className="save-notice" role="status">{saveNotice}</p>}
-      <AnalysisHistory refreshKey={historyRefresh} onOpen={openHistory} />
+      {!isGuest && <AnalysisHistory refreshKey={historyRefresh} onOpen={openHistory} />}
 
       <p className="development-note">
         장소 검색: 카카오 · 자동차 경로: 카카오모빌리티 · 배경 지도: OpenStreetMap.
