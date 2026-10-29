@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { authConfigured, supabase } from './supabaseClient'
 import './AuthGate.css'
+import NicknameSettings from './NicknameSettings.jsx'
 
 function AuthGate({ children }) {
   const [session, setSession] = useState(null)
@@ -54,7 +55,13 @@ function AuthGate({ children }) {
       } else if (mode === 'update') {
         result = await supabase.auth.updateUser({ password })
       } else {
-        result = await supabase.auth.signInWithPassword({ email, password })
+        if (email.includes('@')) result = await supabase.auth.signInWithPassword({ email: email.trim(), password })
+        else {
+          const response = await fetch('/api/nickname-login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ nickname: email, password }) })
+          const body = await response.json()
+          if (!response.ok) throw Error(body.error || '로그인하지 못했습니다.')
+          result = await supabase.auth.setSession(body)
+        }
       }
       if (result.error) throw result.error
       if (mode === 'signup') setNotice(result.data.session ? '회원가입과 로그인이 완료됐습니다.' : '확인 메일을 보냈습니다. 메일의 링크를 눌러 가입을 완료하세요.')
@@ -74,14 +81,14 @@ function AuthGate({ children }) {
   if (session && mode !== 'update') {
     return <>
       <div className="auth-toolbar">
-        <span>{session.user.email}</span>
+        <NicknameSettings key={session.user.id} user={session.user} />
         <button type="button" onClick={async () => {
           const { error } = await supabase.auth.signOut()
           if (error) setNotice(error.message)
         }}>로그아웃</button>
       </div>
       {notice && <p className="auth-toolbar-notice" role="status">{notice}</p>}
-      {children}
+      <div key={session.user.id}>{children}</div>
     </>
   }
 
@@ -91,8 +98,8 @@ function AuthGate({ children }) {
       <h1>{mode === 'signup' ? '회원가입' : mode === 'reset' ? '비밀번호 재설정' : mode === 'update' ? '새 비밀번호 설정' : '로그인'}</h1>
       <p className="auth-description">교통사고 위험지역 분석 서비스를 이용하세요.</p>
       <form onSubmit={submit}>
-        {mode !== 'update' && <label>이메일
-          <input type="email" autoComplete="email" required value={email} onChange={event => setEmail(event.target.value)} />
+        {mode !== 'update' && <label>{mode === 'login' ? '이메일 또는 닉네임' : '이메일'}
+          <input type={mode === 'login' ? 'text' : 'email'} autoComplete={mode === 'login' ? 'username' : 'email'} required value={email} onChange={event => setEmail(event.target.value)} />
         </label>}
         {mode !== 'reset' && <label>{mode === 'update' ? '새 비밀번호' : '비밀번호'}
           <input type="password" autoComplete={mode === 'login' ? 'current-password' : 'new-password'} minLength={6} required value={password} onChange={event => setPassword(event.target.value)} />

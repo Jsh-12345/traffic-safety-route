@@ -2,28 +2,34 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 import { rankRoutes, scoreRoute } from './routeSafety.js'
-import { calculateHazardScore, RISK_WEIGHTS } from './riskScore.js'
+import { RISK_WEIGHTS } from './riskScore.js'
+import { riskSegments } from './riskSegments.js'
 import { getCurrentLocation } from './currentLocation.js'
 
-export default function LiveComparison({ route, safetyLevel }) {
+export default function LiveComparison({ route, safetyLevel, archived = null }) {
   const container = useRef(null)
   const mapRef = useRef(null)
   const routeBoundsRef = useRef(null)
   const currentPositionRef = useRef(null)
   const currentLocationLayerRef = useRef(null)
   const [highlightedId, setHighlightedId] = useState(null)
+  const [riskView, setRiskView] = useState(true)
   const [locating, setLocating] = useState(false)
   const [locationMessage, setLocationMessage] = useState('')
   const ready = !!route.accidentData?.hazards.length
   const scored = useMemo(() => {
+    if (archived) return archived.ranked
     const candidates = route.routes || [route]
     return ready ? candidates.map(r => scoreRoute(r, route.accidentData.hazards)) : candidates
-  }, [route, ready])
-  const ranked = useMemo(() => ready ? rankRoutes(scored, safetyLevel) : [...scored].sort((a, b) => a.duration - b.duration || a.distance - b.distance), [scored, safetyLevel, ready])
+  }, [route, ready, archived])
+  const ranked = useMemo(() => archived?.ranked || (ready ? rankRoutes(scored, safetyLevel) : [...scored].sort((a, b) => a.duration - b.duration || a.distance - b.distance)), [scored, safetyLevel, ready, archived])
   const recommended = ranked[0]
   const fastest = useMemo(() => [...ranked].sort((a, b) => a.duration - b.duration || a.distance - b.distance)[0], [ranked])
   const secondCard = recommended.id === fastest.id ? ranked.find(r => r.id !== fastest.id) : recommended
   const hazards = useMemo(() => ready ? [...new Map(ranked.flatMap(r => r.hazards).map(h => [h.id, h])).values()] : [], [ranked, ready])
+  const focused = ranked.find(r => r.id === highlightedId) || recommended
+  const weights = archived?.weights || RISK_WEIGHTS
+  const hazardScore = h => h.accidents * weights.accidents + h.injuries * weights.injuries + h.fatalities * weights.fatalities
   useEffect(() => {
     const map = L.map(container.current)
     mapRef.current = map
@@ -32,6 +38,7 @@ export default function LiveComparison({ route, safetyLevel }) {
     }).addTo(map)
     const bounds = L.latLngBounds([])
     const draw = (candidate, options) => {
+      if (riskView && candidate.id !== focused.id) options = { ...options, color: '#94a3b8', opacity: .4, weight: 4 }
       for (const road of candidate.segments || [candidate.points]) L.polyline(road, options).addTo(map)
       candidate.points.forEach(p => bounds.extend(p))
     }
@@ -45,9 +52,17 @@ export default function LiveComparison({ route, safetyLevel }) {
       draw(highlighted, { color: '#fff', weight: 11, opacity: .95 })
       draw(highlighted, { color: '#7c3aed', weight: 7, opacity: 1 })
     }
-    for (const h of hazards) {
+    if (riskView) {
+      // 선택 경로를 흰 테두리와 근접 구간 색상으로 구분합니다.
+      draw(focused, { color: '#fff', weight: 12, opacity: 1 })
+      for (const part of riskSegments(focused, ready ? focused.hazards : [])) {
+        L.polyline(part.points, { color: ready ? (part.near ? '#d95b12' : '#087f5b') : '#64748b', weight: 7, opacity: 1 })
+          .bindTooltip(ready ? (part.near ? '사고다발지역 반경과 겹치는 구간' : '수집 자료에서 근접 지역이 없는 구간 (안전 보장 아님)') : '사고 자료 없음').addTo(map)
+      }
+    }
+    for (const h of (riskView ? (focused.hazards || []) : hazards)) {
       const text = document.createElement('span')
-      text.textContent = `${h.label} · ${h.typeLabel} · ${calculateHazardScore(h)}점 (${h.year}년)`
+      text.textContent = `${h.label} · ${h.typeLabel} · ${h.accidents * weights.accidents + h.injuries * weights.injuries + h.fatalities * weights.fatalities}점 (${h.year}년)`
       L.circle([h.lat, h.lng], { radius: h.radius, color: '#c2413b', weight: 1, fillOpacity: .18 }).bindTooltip(text).addTo(map)
     }
     for (const [point, label, color] of [[route.start, '출발지', '#087f5b'], [route.destination, '목적지', '#2563eb']]) {
@@ -68,7 +83,7 @@ export default function LiveComparison({ route, safetyLevel }) {
       routeBoundsRef.current = null
       currentLocationLayerRef.current = null
     }
-  }, [route, recommended, fastest, hazards, ranked, highlightedId])
+  }, [route, recommended, fastest, hazards, ranked, highlightedId, riskView, focused, ready, weights])
 
   const showCurrentLocation = async () => {
     setLocating(true)
@@ -94,7 +109,7 @@ export default function LiveComparison({ route, safetyLevel }) {
   }
 
   return (
-    <section id="analysis-result" className="search-card actual-route" aria-label="실제 후보 경로 비교 결과">
+    <section id={archived ? undefined : "analysis-result"} className="search-card actual-route" aria-label="실제 후보 경로 비교 결과">
       <p className="eyebrow">실제 자동차 경로 · 후보 {ranked.length}개</p>
       {route.routeSearch?.failedPriorities.length > 0 && <p role="status" className="analysis-warning">일부 경로 조회 실패: {route.routeSearch.failedPriorities.join(', ')}. 표시된 후보만 비교합니다.</p>}
       <div className="result-hero">
@@ -122,13 +137,21 @@ export default function LiveComparison({ route, safetyLevel }) {
         })}
       </div>
       {ready && secondCard && <p className="route-card-summary">{recommended.id === fastest.id ? '현재 설정에서는 빠른 경로가 추천 경로입니다.' : `추천 경로는 빠른 경로보다 ${(recommended.duration - fastest.duration) / 60 >= 0 ? '+' : ''}${((recommended.duration - fastest.duration) / 60).toFixed(1)}분, 위험점수 ${fastest.risk - recommended.risk}점 낮습니다.`} 두 경로의 수치는 조회된 후보를 기준으로 계산했습니다.</p>}
-      <div className="route-legend" aria-label="지도 범례">
+      {ready && <div className="risk-visual-summary">
+        <strong>{highlightedId ? '선택한' : '추천'} 경로 · 위험점수 {focused.risk}점 · 관련 지역 {focused.hazards.length}곳</strong>
+        <div className="risk-bars">{ranked.map(r => <div key={r.id}><span>후보 {r.id.replace('route-', '')}{r.id === recommended.id ? ' · 추천' : ''}</span>
+          <progress value={r.risk} max={Math.max(1, ...ranked.map(x => x.risk))} aria-label={`${r.id} 위험점수 ${r.risk}`} /><b>{r.risk}점</b></div>)}</div>
+        <small>막대가 짧을수록 수집된 사고 자료의 가중합이 낮습니다. 실제 사고 확률이 아닙니다.</small>
+      </div>}
+      <label className="risk-toggle"><input type="checkbox" checked={riskView} onChange={e => setRiskView(e.target.checked)} />선택 경로의 사고다발지역 근접 구간 보기</label>
+      {riskView && <p className="risk-legend"><strong>초록: 수집 자료에서 근접 지역 없음 · 주황: 사고다발지역 반경과 겹침 · 회색: 다른 후보</strong><br />{ready ? '현재 선택한 경로에 관련된 지역만 표시합니다. 초록색도 안전을 보장하지 않습니다.' : '사고 자료가 없어 경로를 회색으로 표시합니다.'}</p>}
+      {!riskView && <div className="route-legend" aria-label="지도 범례">
         <span><i className="legend-line legend-blue" />빠른 경로</span>
         {recommended.id !== fastest.id && <span><i className="legend-line legend-green" />추천 경로</span>}
         {ranked.some(r => r.id !== fastest.id && r.id !== recommended.id) && <span><i className="legend-line legend-orange" />다른 후보</span>}
         <span><i className="legend-line legend-purple" />선택한 경로</span>
         <span><i className="legend-dot" />사고 다발지역</span>
-      </div>
+      </div>}
       <div className="map-toolbar">
         <button type="button" className="current-location-button" onClick={showCurrentLocation} disabled={locating}>{locating ? '위치 확인 중…' : '◎ 내 현재 위치 보기'}</button>
         <button type="button" onClick={() => mapRef.current?.fitBounds(routeBoundsRef.current, { padding: [35, 35] })}>경로 전체 보기</button>
@@ -159,13 +182,13 @@ export default function LiveComparison({ route, safetyLevel }) {
           </tr>)}</tbody>
         </table></div>
         <details className="method-details"><summary>위험점수·종합점수 계산 방법</summary>
-          <p>위험점수 = 사고×{RISK_WEIGHTS.accidents} + 부상×{RISK_WEIGHTS.injuries} + 사망×{RISK_WEIGHTS.fatalities}. 같은 지역은 경로당 한 번만 합산합니다.</p>
+          <p>위험점수 = 사고×{weights.accidents} + 부상×{weights.injuries} + 사망×{weights.fatalities}. 같은 지역은 경로당 한 번만 합산합니다.</p>
           <p>종합점수 = 정규화 시간×(1−안전 가중치) + 정규화 위험점수×안전 가중치. 낮을수록 우선하며 동점이면 짧은 시간을 선택합니다. 가중치는 프로젝트용 임시 기준입니다.</p>
         </details>
         {hazards.length > 0 && <details><summary>관련 사고 다발지역 상세정보 ({hazards.length}개)</summary>
           <ul className="hazard-list">{hazards.map(h => <li key={h.id}>
             <strong>{h.label} · {h.typeLabel}</strong>
-            <p>사고 {h.accidents}건 · 부상 {h.injuries}명 · 사망 {h.fatalities}명 · {calculateHazardScore(h)}점 · 반경 {h.radius}m · {h.year}년</p>
+            <p>사고 {h.accidents}건 · 부상 {h.injuries}명 · 사망 {h.fatalities}명 · {hazardScore(h)}점 · 반경 {h.radius}m · {h.year}년</p>
           </li>)}</ul>
         </details>}
         <p>자료: <a href={route.accidentData.sourceUrl} target="_blank" rel="noreferrer">{route.accidentData.source}</a></p>

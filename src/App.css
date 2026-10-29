@@ -449,3 +449,14 @@ legend {
 .exact-location-option small { margin-top: .35rem; color: #475467; font-size: .85rem; line-height: 1.5; }
 .history-detail p { overflow-wrap: anywhere; }
 @media (max-width: 650px) { .history-item { align-items: flex-start; flex-direction: column; } .history-actions { width: 100%; justify-content: flex-start; } }
+
+.risk-visual-summary { background:#edf8f3; border:1px solid #b5dccc; padding:20px; border-radius:16px; margin:20px 0; }
+.risk-bars > div { display:grid; grid-template-columns:110px minmax(60px,1fr) 70px; gap:12px; align-items:center; margin:12px 0; }
+.risk-bars progress { width:100%; accent-color:#087f5b; height:16px; }
+.risk-toggle { display:flex; align-items:center; gap:8px; margin:16px 0; }
+.risk-legend { color:#253b33; line-height:1.7; }
+.history-detail .actual-route { padding:20px; margin-top:16px; }
+.nickname-settings { max-width:460px; padding:10px; }
+.nickname-settings form { display:grid; gap:10px; padding:12px 0; }
+.nickname-settings input { padding:8px; max-width:100%; }
+.nickname-settings small { display:block; }

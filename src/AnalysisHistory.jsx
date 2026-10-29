@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { supabase } from './supabaseClient.js'
+import HistorySnapshot from './HistorySnapshot.jsx'
 
 export default function AnalysisHistory({ refreshKey }) {
   const [records, setRecords] = useState([])
@@ -40,6 +41,7 @@ export default function AnalysisHistory({ refreshKey }) {
         <div className="history-actions"><button type="button" onClick={() => setSelected(selected === record.id ? null : record.id)} aria-expanded={selected === record.id}>결과 {selected === record.id ? '접기' : '보기'}</button>
           <button type="button" onClick={() => remove(record.id)} aria-label="이 기록 삭제">삭제</button></div></div>
       {selected === record.id && <div className="history-detail">
+        <HistorySnapshot key={record.id} recordId={record.id} />
         {record.start_label && <p>출발지: {record.start_address || record.start_label}
           {record.start_lat != null && record.start_lng != null && ` · 좌표 ${record.start_lat}, ${record.start_lng}`}</p>}
         {record.destination_label && <p>목적지: {record.destination_address || record.destination_label}
