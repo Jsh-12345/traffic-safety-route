@@ -5,6 +5,7 @@ import PlaceInput from './PlaceInput'
 import LiveComparison from './LiveComparison'
 import AnalysisHistory from './AnalysisHistory.jsx'
 import { makeAnalysisRecord } from './analysisHistory.js'
+import { restoreHistory } from './restoreHistory.js'
 import { supabase } from './supabaseClient.js'
 
 const routeOptions = [
@@ -38,21 +39,34 @@ function App() {
   const [startPoint, setStartPoint] = useState(null)
   const [endPoint, setEndPoint] = useState(null)
   const [actualRoute, setActualRoute] = useState(null)
+  const [archived, setArchived] = useState(null)
+  const [historyRecord, setHistoryRecord] = useState(null)
   const [loading, setLoading] = useState(false)
   const [historyRefresh, setHistoryRefresh] = useState(0)
   const [saveNotice, setSaveNotice] = useState('')
   const requestRef = useRef(null)
   useEffect(() => () => requestRef.current?.abort(), [])
   useEffect(() => {
-    if (actualRoute) document.getElementById('analysis-result')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
-  }, [actualRoute])
+    if (actualRoute || historyRecord) document.getElementById('analysis-result')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  }, [actualRoute, historyRecord])
 
   const invalidate = () => {
     requestRef.current?.abort()
     setActualRoute(null)
+    setArchived(null)
+    setHistoryRecord(null)
     setLoading(false)
     setMessage('')
     setSaveNotice('')
+  }
+  const openHistory = (record, snapshot) => {
+    invalidate()
+    const restored = restoreHistory(record, snapshot)
+    setStart(restored.start); setDestination(restored.destination)
+    setStartPoint(restored.startPoint); setEndPoint(restored.endPoint)
+    setSafetyLevel(restored.safetyLevel); setRouteType(record.route_type)
+    setDataYear(restored.dataYear); setShowMap(false)
+    setArchived(restored.archived); setActualRoute(restored.route); setHistoryRecord(record)
   }
   const changeText = (target, value) => {
     invalidate()
@@ -78,6 +92,7 @@ function App() {
   }
 
   const handleRouteChange = (value) => {
+    if (historyRecord) invalidate()
     const defaultLevels = {
       fast: 0,
       balanced: 50,
@@ -89,6 +104,7 @@ function App() {
 }
 
   const handleSafetyChange = (value) => {
+    if (historyRecord) invalidate()
     const level = Number(value)
 
     setSafetyLevel(level)
@@ -306,9 +322,15 @@ function App() {
         </form>
       </section>
 
-      {actualRoute && <LiveComparison route={actualRoute} safetyLevel={safetyLevel} />}
+      {historyRecord && <div className="history-banner"><strong>{new Date(historyRecord.created_at).toLocaleString('ko-KR')} 저장 결과</strong><span>당시 출발지·목적지를 입력창에 불러왔습니다. 현재 교통정보는 조회하지 않았습니다.</span></div>}
+      {actualRoute && <LiveComparison key={historyRecord?.id || 'live'} route={actualRoute} safetyLevel={safetyLevel} archived={archived} />}
+      {historyRecord && !actualRoute && <section id="analysis-result" className="search-card legacy-result">
+        <h2>{start} → {destination}</h2>
+        <p>이전 기록에는 경로선이 저장되지 않아 당시 지도는 복원할 수 없습니다. 저장된 비교 결과를 표시합니다.</p>
+        <ul>{historyRecord.candidates.map(c => <li key={c.id}>{c.id === historyRecord.recommended_route ? '추천 · ' : ''}{c.id} · {(c.duration / 60).toFixed(1)}분 · {(c.distance / 1000).toFixed(1)}km · 위험점수 {c.risk ?? '자료 없음'}</li>)}</ul>
+      </section>}
       {actualRoute && saveNotice && <p className="save-notice" role="status">{saveNotice}</p>}
-      <AnalysisHistory refreshKey={historyRefresh} />
+      <AnalysisHistory refreshKey={historyRefresh} onOpen={openHistory} />
 
       <p className="development-note">
         장소 검색: 카카오 · 자동차 경로: 카카오모빌리티 · 배경 지도: OpenStreetMap.

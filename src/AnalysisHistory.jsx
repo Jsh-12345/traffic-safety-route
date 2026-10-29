@@ -1,12 +1,26 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { supabase } from './supabaseClient.js'
-import HistorySnapshot from './HistorySnapshot.jsx'
 
-export default function AnalysisHistory({ refreshKey }) {
+export default function AnalysisHistory({ refreshKey, onOpen }) {
   const [records, setRecords] = useState([])
   const [selected, setSelected] = useState(null)
   const [notice, setNotice] = useState('')
   const [loading, setLoading] = useState(false)
+  const [opening, setOpening] = useState(null)
+  const openRequest = useRef(0)
+  useEffect(() => () => { openRequest.current++ }, [])
+  const open = async (record) => {
+    const request = ++openRequest.current
+    setOpening(record.id); setNotice('')
+    try {
+      const { data, error } = await supabase.from('route_analyses').select('snapshot').eq('id', record.id).single()
+      if (request !== openRequest.current) return
+      if (error) throw error
+      setSelected(record.id)
+      onOpen(record, data.snapshot)
+    } catch { if (request === openRequest.current) setNotice('기록을 불러오지 못했습니다. 다시 시도해 주세요.') }
+    finally { if (request === openRequest.current) setOpening(null) }
+  }
   const load = useCallback(async () => {
     if (!supabase) return
     setLoading(true)
@@ -38,10 +52,10 @@ export default function AnalysisHistory({ refreshKey }) {
     <ul className="history-list">{records.map(record => <li key={record.id}>
       <div className="history-item"><div><strong>{record.start_label || record.start_region} → {record.destination_label || record.destination_region}</strong>
         <small>{new Date(record.created_at).toLocaleString('ko-KR')} · {record.data_year}년 자료 · 안전 우선 {record.safety_level}%</small></div>
-        <div className="history-actions"><button type="button" onClick={() => setSelected(selected === record.id ? null : record.id)} aria-expanded={selected === record.id}>결과 {selected === record.id ? '접기' : '보기'}</button>
+        <div className="history-actions"><button type="button" onClick={() => open(record)} disabled={opening !== null}>{opening === record.id ? '불러오는 중…' : '결과 보기'}</button>
           <button type="button" onClick={() => remove(record.id)} aria-label="이 기록 삭제">삭제</button></div></div>
       {selected === record.id && <div className="history-detail">
-        <HistorySnapshot key={record.id} recordId={record.id} />
+        <p>선택한 기록을 위의 분석 결과 화면에 열었습니다.</p>
         {record.start_label && <p>출발지: {record.start_address || record.start_label}
           {record.start_lat != null && record.start_lng != null && ` · 좌표 ${record.start_lat}, ${record.start_lng}`}</p>}
         {record.destination_label && <p>목적지: {record.destination_address || record.destination_label}

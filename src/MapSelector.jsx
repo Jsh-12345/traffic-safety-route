@@ -26,7 +26,7 @@ export default function MapSelector({ start, destination, onSelect }) {
 
   // 지도를 만들고, 화면에서 제거될 때 정리합니다.
   useEffect(() => {
-    const map = L.map(containerRef.current).setView(
+    const map = L.map(containerRef.current, { scrollWheelZoom: false }).setView(
       [36.3504, 127.3845],
       13,
     )

@@ -8,6 +8,8 @@ import { getCurrentLocation } from './currentLocation.js'
 
 export default function LiveComparison({ route, safetyLevel, archived = null }) {
   const container = useRef(null)
+  const dialogRef = useRef(null)
+  const [expanded, setExpanded] = useState(false)
   const mapRef = useRef(null)
   const routeBoundsRef = useRef(null)
   const currentPositionRef = useRef(null)
@@ -31,7 +33,7 @@ export default function LiveComparison({ route, safetyLevel, archived = null }) 
   const weights = archived?.weights || RISK_WEIGHTS
   const hazardScore = h => h.accidents * weights.accidents + h.injuries * weights.injuries + h.fatalities * weights.fatalities
   useEffect(() => {
-    const map = L.map(container.current)
+    const map = L.map(container.current, { scrollWheelZoom: false })
     mapRef.current = map
     L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
       maxZoom: 19, attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
@@ -68,7 +70,18 @@ export default function LiveComparison({ route, safetyLevel, archived = null }) 
     for (const [point, label, color] of [[route.start, '출발지', '#087f5b'], [route.destination, '목적지', '#2563eb']]) {
       L.circleMarker([point.lat, point.lng], { color, fillOpacity: 1, radius: 8 }).bindTooltip(label, { permanent: true }).addTo(map)
     }
-    map.fitBounds(bounds, { padding: [60, 60] })
+    let frame
+    const fit = () => {
+      cancelAnimationFrame(frame)
+      frame = requestAnimationFrame(() => {
+        if (!container.current?.clientWidth || !container.current?.clientHeight) return
+        map.invalidateSize({ pan: false })
+        map.fitBounds(bounds, { padding: [36, 36], maxZoom: 16, animate: false })
+      })
+    }
+    const observer = new ResizeObserver(fit)
+    observer.observe(container.current)
+    fit()
     routeBoundsRef.current = bounds
     currentLocationLayerRef.current = L.layerGroup().addTo(map)
     if (currentPositionRef.current) {
@@ -78,12 +91,23 @@ export default function LiveComparison({ route, safetyLevel, archived = null }) 
         .bindTooltip('내 현재 위치', { permanent: true, direction: 'top' }).addTo(currentLocationLayerRef.current)
     }
     return () => {
+      observer.disconnect()
+      cancelAnimationFrame(frame)
       map.remove()
       mapRef.current = null
       routeBoundsRef.current = null
       currentLocationLayerRef.current = null
     }
-  }, [route, recommended, fastest, hazards, ranked, highlightedId, riskView, focused, ready, weights])
+  }, [route, recommended, fastest, hazards, ranked, highlightedId, riskView, focused, ready, weights, expanded])
+
+  useEffect(() => {
+    if (!expanded) return
+    const dialog = dialogRef.current
+    const oldOverflow = document.body.style.overflow
+    dialog.showModal()
+    document.body.style.overflow = 'hidden'
+    return () => { document.body.style.overflow = oldOverflow; dialog.close() }
+  }, [expanded])
 
   const showCurrentLocation = async () => {
     setLocating(true)
@@ -108,8 +132,18 @@ export default function LiveComparison({ route, safetyLevel, archived = null }) 
     }
   }
 
+  const mapPanel = <>
+      <div className="map-toolbar">
+        <button type="button" onClick={() => setExpanded(!expanded)}>{expanded ? '지도 닫기 (Esc)' : '지도 크게 보기'}</button>
+        <button type="button" className="current-location-button" onClick={showCurrentLocation} disabled={locating}>{locating ? '위치 확인 중…' : '◎ 내 현재 위치 보기'}</button>
+        <button type="button" onClick={() => mapRef.current?.fitBounds(routeBoundsRef.current, { padding: [35, 35] })}>경로 전체 보기</button>
+      </div>
+      {locationMessage && <p role="status" className="location-feedback">{locationMessage}</p>}
+      <div ref={container} className="location-map" aria-label="실제 후보 경로와 사고 다발지역 지도" />
+  </>
+
   return (
-    <section id={archived ? undefined : "analysis-result"} className="search-card actual-route" aria-label="실제 후보 경로 비교 결과">
+    <section id="analysis-result" className="search-card actual-route" aria-label="실제 후보 경로 비교 결과">
       <p className="eyebrow">실제 자동차 경로 · 후보 {ranked.length}개</p>
       {route.routeSearch?.failedPriorities.length > 0 && <p role="status" className="analysis-warning">일부 경로 조회 실패: {route.routeSearch.failedPriorities.join(', ')}. 표시된 후보만 비교합니다.</p>}
       <div className="result-hero">
@@ -118,6 +152,7 @@ export default function LiveComparison({ route, safetyLevel, archived = null }) 
         <h2>{route.start.label} → {route.destination.label}</h2>
         {ready && recommended.id !== fastest.id && <p>빠른 경로보다 약 {Math.max(0, Math.round((recommended.duration - fastest.duration) / 60))}분 더 소요 · 위험점수 {fastest.risk - recommended.risk}점 감소</p>}
       </div>
+      <details className="compact-cards"><summary>경로별 상세 수치 보기</summary>
       <div className="live-route-cards" aria-label="실제 경로 요약 비교">
         {[fastest, secondCard].filter(Boolean).map((candidate, index) => {
           const isRecommended = candidate.id === recommended.id
@@ -137,6 +172,7 @@ export default function LiveComparison({ route, safetyLevel, archived = null }) 
         })}
       </div>
       {ready && secondCard && <p className="route-card-summary">{recommended.id === fastest.id ? '현재 설정에서는 빠른 경로가 추천 경로입니다.' : `추천 경로는 빠른 경로보다 ${(recommended.duration - fastest.duration) / 60 >= 0 ? '+' : ''}${((recommended.duration - fastest.duration) / 60).toFixed(1)}분, 위험점수 ${fastest.risk - recommended.risk}점 낮습니다.`} 두 경로의 수치는 조회된 후보를 기준으로 계산했습니다.</p>}
+      </details>
       {ready && <div className="risk-visual-summary">
         <strong>{highlightedId ? '선택한' : '추천'} 경로 · 위험점수 {focused.risk}점 · 관련 지역 {focused.hazards.length}곳</strong>
         <div className="risk-bars">{ranked.map(r => <div key={r.id}><span>후보 {r.id.replace('route-', '')}{r.id === recommended.id ? ' · 추천' : ''}</span>
@@ -152,12 +188,7 @@ export default function LiveComparison({ route, safetyLevel, archived = null }) 
         <span><i className="legend-line legend-purple" />선택한 경로</span>
         <span><i className="legend-dot" />사고 다발지역</span>
       </div>}
-      <div className="map-toolbar">
-        <button type="button" className="current-location-button" onClick={showCurrentLocation} disabled={locating}>{locating ? '위치 확인 중…' : '◎ 내 현재 위치 보기'}</button>
-        <button type="button" onClick={() => mapRef.current?.fitBounds(routeBoundsRef.current, { padding: [35, 35] })}>경로 전체 보기</button>
-      </div>
-      {locationMessage && <p role="status" className="location-feedback">{locationMessage}</p>}
-      <div ref={container} className="location-map" aria-label="실제 후보 경로와 사고 다발지역 지도" />
+      {expanded ? <dialog ref={dialogRef} className="map-dialog" aria-label="경로 지도 크게 보기" onCancel={event => { event.preventDefault(); setExpanded(false) }}>{mapPanel}</dialog> : <div className="map-panel">{mapPanel}</div>}
       {route.accidentError && <p role="alert" className="analysis-warning">사고 데이터 분석 불가: {route.accidentError} 빠른 경로만 제공합니다.</p>}
       {route.accidentData && !ready && <p role="status">{route.accidentData.year}년 대전 조회 결과가 0건입니다. 안전점수를 판단하지 않고 빠른 경로만 표시합니다.</p>}
       {ready && <>
