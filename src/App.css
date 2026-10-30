@@ -520,3 +520,10 @@ legend {
 .hazard-selection-notice { margin: 6px 0; padding: 8px 10px; color: #5b21b6; background: #f5f3ff; font-size: 13px; flex-shrink: 0; }
 .hazard-selection-notice button { margin-left: 8px; border: 1px solid #c4b5fd; border-radius: 6px; padding: 4px 8px; background: white; color: #5b21b6; cursor: pointer; }
 .hazard-help, .hazard-radius-note { font-size: 13px; color: #475569; line-height: 1.6; }
+
+/* Explicit tooltip avoids native title delays and clipping in scrolling tables. */
+.actual-route button.risk-value { display: inline; width: auto; margin: 0; padding: 1px 2px; border: 0; border-radius: 3px; background: transparent; color: inherit; font: inherit; line-height: inherit; white-space: nowrap; text-decoration: underline dotted; text-underline-offset: 4px; cursor: help; vertical-align: baseline; }
+.actual-route button.risk-value:hover, .actual-route button.risk-value[aria-expanded="true"] { background: #e4f3ed; color: #075c43; }
+.risk-explanation-popup { position: fixed; z-index: 10000; box-sizing: border-box; padding: 12px 14px; border: 1px solid #9bbfb0; border-radius: 10px; background: #fff; color: #172033; box-shadow: 0 6px 24px rgb(15 23 42 / 18%); font-size: 13px; line-height: 1.7; text-align: left; overflow-y: auto; pointer-events: auto; }
+.risk-explanation-popup strong { display: block; margin-bottom: 5px; color: #075c43; }
+.risk-explanation-popup div { white-space: pre-line; overflow-wrap: anywhere; }

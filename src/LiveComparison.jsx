@@ -3,6 +3,8 @@ import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 import { rankRoutes, scoreRoute } from './routeSafety.js'
 import RiskValue from './RiskValue.jsx'
+import { hazardMarkerRadius } from './hazardMarker.js'
+import { explainRisk } from './riskExplanation.js'
 import { RISK_WEIGHTS } from './riskScore.js'
 import { riskSegments } from './riskSegments.js'
 import { getCurrentLocation } from './currentLocation.js'
@@ -87,10 +89,15 @@ export default function LiveComparison({ route, safetyLevel, archived = null }) 
           .bindTooltip(ready ? (part.near ? '사고다발지역 반경과 겹치는 구간' : '수집 자료에서 근접 지역이 없는 구간 (안전 보장 아님)') : '사고 자료 없음').addTo(map)
       }
     }
-    for (const h of (riskView ? (focused.hazards || []) : hazards)) {
+    const visibleHazards = riskView ? (focused.hazards || []) : hazards
+    const score = h => h.accidents * weights.accidents + h.injuries * weights.injuries + h.fatalities * weights.fatalities
+    // 큰 기호를 먼저 그려 작은 기호가 완전히 가려지는 것을 줄입니다.
+    for (const h of [...visibleHazards].sort((a, b) => score(b) - score(a))) {
       const text = document.createElement('span')
-      text.textContent = `${h.label} · ${h.typeLabel} · ${h.accidents * weights.accidents + h.injuries * weights.injuries + h.fatalities * weights.fatalities}점 (${h.year}년)`
-      L.circle([h.lat, h.lng], { radius: h.radius, color: '#c2413b', weight: 1, fillOpacity: .18 }).bindTooltip(text).addTo(map)
+      text.style.whiteSpace = 'pre-line'
+      text.textContent = `${h.label} · ${h.typeLabel} · ${score(h)}점 (${h.year}년)\n${explainRisk([h], weights)}`
+      L.circleMarker([h.lat, h.lng], { radius: hazardMarkerRadius(score(h)), color: '#c2413b', weight: 2, fillOpacity: .24 })
+        .bindTooltip(text).on('click', () => setSelectedHazardId(h.id)).addTo(map)
     }
     for (const [point, label, color] of [[route.start, '출발지', '#087f5b'], [route.destination, '목적지', '#2563eb']]) {
       L.circleMarker([point.lat, point.lng], { color, fillOpacity: 1, radius: 8 }).bindTooltip(label, { permanent: true }).addTo(map)
@@ -98,9 +105,11 @@ export default function LiveComparison({ route, safetyLevel, archived = null }) 
     let selectedBounds
     if (selectedHazard) {
       const h = selectedHazard
-      L.circle([h.lat, h.lng], { radius: h.radius, color: '#7c3aed', weight: 4, fillOpacity: .22 }).addTo(map)
+      L.circleMarker([h.lat, h.lng], { radius: hazardMarkerRadius(score(h)), color: '#7c3aed', weight: 4, fillOpacity: .3 }).addTo(map)
+      // 선택한 지역에는 계산에 쓰는 실제 거리 반경도 점선으로 구분합니다.
+      L.circle([h.lat, h.lng], { radius: h.radius, color: '#64748b', weight: 1.5, dashArray: '5 5', fillOpacity: 0, interactive: false }).addTo(map)
       const label = document.createElement('span')
-      label.textContent = `${h.label} · ${h.typeLabel} · 반경 ${h.radius}m`
+      label.textContent = `${h.label} · ${score(h)}점 · 판정 반경 ${h.radius}m`
       L.circleMarker([h.lat, h.lng], { radius: 8, color: '#fff', weight: 3, fillColor: '#7c3aed', fillOpacity: 1 })
         .bindTooltip(label, { permanent: true, direction: 'top' }).addTo(map)
       selectedBounds = L.latLng(h.lat, h.lng).toBounds(h.radius * 2)
@@ -185,9 +194,9 @@ export default function LiveComparison({ route, safetyLevel, archived = null }) 
         aria-pressed={highlightedId === r.id} onClick={() => selectRoute(highlightedId === r.id ? null : r.id)}>
         <i style={{ borderColor: routeStyles[r.id].color, borderTopStyle: routeStyles[r.id].dashArray ? 'dashed' : 'solid' }} />{routeLabel(r)}</button>)}</div>
       {riskView ? <p className="map-view-note"><strong>초록: 수집 자료에서 근접 지역 없음 · 주황: 사고다발지역 반경과 겹침 · 회색: 다른 후보</strong><br />{ready ? '선택 경로의 관련 지역만 표시합니다. 초록색도 안전을 보장하지 않습니다.' : '사고 자료가 없어 경로를 회색으로 표시합니다.'}</p>
-        : <p className="map-view-note">모든 후보를 색상별로 표시합니다. 같은 도로를 지나는 부분은 겹칠 수 있으니 위의 후보 버튼으로 강조해 비교하세요. 빨간 원은 사고다발지역입니다.</p>}
+        : <p className="map-view-note">모든 후보를 색상별로 표시합니다. 같은 도로를 지나는 부분은 겹칠 수 있으니 위의 후보 버튼으로 강조해 비교하세요. 빨간 원은 사고다발지역이며, 위험점수가 높을수록 크게 표시합니다.</p>}
       <small className="map-scroll-hint">{expanded ? '마우스 휠 또는 + / − 버튼으로 확대·축소하세요.' : '지도 확대·축소는 + / − 버튼을 사용하세요. 크게 보기에서는 마우스 휠도 사용할 수 있습니다.'}</small>
-      {selectedHazard && <p className="hazard-selection-notice" role="status">지도에서 강조 중: {selectedHazard.label} · {selectedHazard.typeLabel} · 반경 {selectedHazard.radius}m <button type="button" onClick={showAllBounds}>강조 해제 · 전체 경로</button></p>}
+      {selectedHazard && <p className="hazard-selection-notice" role="status">지도에서 강조 중: {selectedHazard.label} · {selectedHazard.typeLabel} · 판정 반경 {selectedHazard.radius}m (회색 점선) <button type="button" onClick={showAllBounds}>강조 해제 · 전체 경로</button></p>}
       {locationMessage && <p role="status" className="location-feedback">{locationMessage}</p>}
       <div ref={container} className="location-map" aria-label="실제 후보 경로와 사고 다발지역 지도" />
   </>
@@ -227,10 +236,10 @@ export default function LiveComparison({ route, safetyLevel, archived = null }) 
         <strong>{highlightedId ? '선택한' : '추천'} 경로 · 위험점수 <RiskValue value={focused.risk} hazards={focused.hazards} weights={weights} /> · 관련 지역 {focused.hazards.length}곳</strong>
         <div className="risk-bars">{ranked.map(r => <div key={r.id}><span>후보 {r.id.replace('route-', '')}{r.id === recommended.id ? ' · 추천' : ''}</span>
           <progress value={r.risk} max={Math.max(1, ...ranked.map(x => x.risk))} aria-label={`${r.id} 위험점수 ${r.risk}`} /><b><RiskValue value={r.risk} hazards={r.hazards} weights={weights} /></b></div>)}</div>
-        <small>점수에 마우스를 올리면 계산 내역이 표시됩니다. 막대가 짧을수록 수집된 사고 자료의 가중합이 낮습니다. 실제 사고 확률이 아닙니다.</small>
+        <small>점수에 마우스를 올리거나 클릭하면 계산 내역이 표시됩니다. 막대가 짧을수록 수집된 사고 자료의 가중합이 낮습니다. 실제 사고 확률이 아닙니다.</small>
       </div>}
       {expanded ? <dialog ref={dialogRef} className="map-dialog" aria-label="경로 지도 크게 보기" onCancel={event => { event.preventDefault(); setExpanded(false) }}>{mapPanel}</dialog> : <div className="map-panel">{mapPanel}</div>}
-      <p className="hazard-radius-note">원은 지역 중심점 기준의 거리 범위입니다. 현재 설정은 신호위반 반경 100m, 중앙선침범 반경 300m이며, 원의 크기는 위험점수와 무관합니다. 저장 기록은 저장 당시 반경을 사용합니다.</p>
+      <p className="hazard-radius-note">채워진 원은 위험점수가 높을수록 커지는 비교용 기호이며 실제 거리 범위가 아닙니다. 지역 선택 시 회색 점선으로 판정 반경(신호위반 100m·중앙선침범 300m)을 따로 표시합니다. 경로 점수와 저장 기록은 기존 판정 반경을 사용합니다.</p>
       {route.accidentError && <p role="alert" className="analysis-warning">사고 데이터 분석 불가: {route.accidentError} 빠른 경로만 제공합니다.</p>}
       {route.accidentData && !ready && <p role="status">{route.accidentData.year}년 대전 조회 결과가 0건입니다. 안전점수를 판단하지 않고 빠른 경로만 표시합니다.</p>}
       {ready && <>
@@ -259,10 +268,10 @@ export default function LiveComparison({ route, safetyLevel, archived = null }) 
           <p>종합점수 = 정규화 시간×(1−안전 가중치) + 정규화 위험점수×안전 가중치. 낮을수록 우선하며 동점이면 짧은 시간을 선택합니다. 가중치는 프로젝트용 임시 기준입니다.</p>
         </details>
         {hazards.length > 0 && <details><summary>관련 사고 다발지역 상세정보 ({hazards.length}개)</summary>
-          <p className="hazard-help">지역 이름을 누르면 지도에서 위치를 강조합니다. 점수에 마우스를 올리면 계산 내역을 볼 수 있습니다.</p>
+          <p className="hazard-help">지역 이름을 누르면 지도에서 위치를 강조합니다. 점수에 마우스를 올리거나 클릭하면 계산 내역을 볼 수 있습니다.</p>
           <ul className="hazard-list">{hazards.map(h => <li key={h.id} className={selectedHazardId === h.id ? 'selected-hazard' : ''}>
             <button type="button" className="hazard-location-button" onClick={() => showHazard(h)} aria-label={`${h.label} ${h.typeLabel} 지도에서 위치 보기`}>{h.label} · {h.typeLabel} <span>지도에서 보기 ↗</span></button>
-            <p>사고 {h.accidents}건 · 부상 {h.injuries}명 · 사망 {h.fatalities}명 · <RiskValue value={hazardScore(h)} hazards={[h]} weights={weights} /> · 반경 {h.radius}m · {h.year}년</p>
+            <p>사고 {h.accidents}건 · 부상 {h.injuries}명 · 사망 {h.fatalities}명 · <RiskValue value={hazardScore(h)} hazards={[h]} weights={weights} /> · 판정 반경 {h.radius}m · {h.year}년</p>
           </li>)}</ul>
         </details>}
         <p>자료: <a href={route.accidentData.sourceUrl} target="_blank" rel="noreferrer">{route.accidentData.source}</a></p>
