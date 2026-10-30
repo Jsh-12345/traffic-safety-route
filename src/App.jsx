@@ -8,6 +8,7 @@ import AnalysisHistory from './AnalysisHistory.jsx'
 import { makeAnalysisRecord } from './analysisHistory.js'
 import { restoreHistory } from './restoreHistory.js'
 import { supabase } from './supabaseClient.js'
+import { routeBounds } from './routeSafety.js'
 
 const routeOptions = [
   {
@@ -146,13 +147,13 @@ function App() {
         if (!response.ok) throw new Error(data.error || '조회에 실패했습니다.')
         return data
       }
-      const [directions, accidents, regions] = await Promise.allSettled([
-        fetchJson(`/api/directions?${params}`),
-        fetchJson(`/api/accidents?year=${dataYear}`),
-        fetchJson(`/api/regions?${params}`),
-      ])
-      if (directions.status === 'rejected') throw directions.reason
-      const data = { ...directions.value,
+      const regionsRequest = fetchJson(`/api/regions?${params}`)
+      regionsRequest.catch(() => {})
+      const directions = await fetchJson(`/api/directions?${params}`)
+      // 모든 후보 경로 주변의 사고 다발지역만 요청합니다.
+      const bounds = new URLSearchParams({ year: dataYear, ...routeBounds(directions.routes || [directions]) })
+      const [accidents, regions] = await Promise.allSettled([fetchJson(`/api/accidents?${bounds}`), regionsRequest])
+      const data = { ...directions,
         accidentData: accidents.status === 'fulfilled' ? accidents.value : null,
         accidentError: accidents.status === 'rejected' ? accidents.reason.message : '',
       }

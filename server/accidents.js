@@ -1,7 +1,10 @@
 import { ApiError } from './kakao.js'
 import { getStoredAccidents } from './accidentStore.js'
+import { DAEJEON_REGIONS } from './accidentRegions.js'
 
-export const DISTRICTS = ['110', '140', '170', '200', '230'] // 대전 동구·중구·서구·유성구·대덕구
+export const DISTRICTS = DAEJEON_REGIONS.map(r => r.code.slice(2)) // 대전 동구·중구·서구·유성구·대덕구
+// DB에 전국 자료가 없을 때 실시간 API로 대신할 수 있는 범위(대전)입니다.
+const DAEJEON_BOUNDS = { minLat: 36.18, maxLat: 36.5, minLng: 127.24, maxLng: 127.56 }
 const cache = new Map()
 const pending = new Map()
 
@@ -31,6 +34,12 @@ export function normalizeHazard(item, year) {
   }
 }
 
+// 22: 하루 호출 한도 초과(다음 날 재시도), 23: 초당 호출 한도 초과(잠시 후 재시도)
+export const RATE_MESSAGES = {
+  22: '공공데이터 API 하루 호출 한도를 초과했습니다. 내일 다시 시도하세요.',
+  23: '공공데이터 API 초당 호출 한도를 초과했습니다. 잠시 후 다시 시도하세요.',
+}
+
 export function parseAccidentResponse(data) {
   const body = data.response?.body || data.body || data
   const header = data.response?.header || data.header || body
@@ -40,7 +49,7 @@ export function parseAccidentResponse(data) {
   if (code === '03') return { items: [], total: 0 }
   if (code !== '00') {
     if (['20', '30', '31'].includes(code)) throw new ApiError(502, '공공데이터 인증키와 법규위반별 사고 API 활용승인 상태를 확인하세요.')
-    if (['22', '23'].includes(code)) throw new ApiError(429, '공공데이터 API 호출 한도를 초과했습니다. 잠시 후 시도하세요.')
+    if (RATE_MESSAGES[code]) throw new ApiError(429, RATE_MESSAGES[code])
     throw new ApiError(502, `사고 데이터 조회 오류(코드 ${code}). 조회 연도와 서비스 상태를 확인하세요.`)
   }
   const raw = body.items?.item
@@ -51,19 +60,33 @@ export function parseAccidentResponse(data) {
   return { items, total }
 }
 
-async function loadDistrict(year, district, key, fetcher) {
+export function decodeServiceKey(rawKey) {
+  if (!rawKey) throw new ApiError(503, '.env.local에 DATA_GO_KR_SERVICE_KEY를 추가하고 서버를 다시 시작하세요.')
+  let key = rawKey.trim()
+  if (/%[0-9a-f]{2}/i.test(key)) { try { key = decodeURIComponent(key) } catch { throw new ApiError(400, '공공데이터 인증키의 형식을 확인하세요.') } }
+  return key
+}
+
+// code는 5자리 법정동 시군구 코드입니다(앞 2자리 시도, 뒤 3자리 시군구).
+export async function loadRegionCode(year, code, key, fetcher = fetch) {
   const items = []
   for (let page = 1; page <= 20; page++) {
     const url = new URL('https://apis.data.go.kr/B552061/frequentzoneLgrViolt/getRestFrequentzoneLgrViolt')
     // 디코딩 키를 URLSearchParams가 한 번만 인코딩합니다.
-    url.search = new URLSearchParams({ ServiceKey: key, searchYearCd: String(year), siDo: '30', guGun: district, type: 'json', numOfRows: '100', pageNo: String(page) }).toString()
+    url.search = new URLSearchParams({ ServiceKey: key, searchYearCd: String(year), siDo: code.slice(0, 2), guGun: code.slice(2), type: 'json', numOfRows: '100', pageNo: String(page) }).toString()
     let response
     try { response = await fetcher(url, { signal: AbortSignal.timeout(12000) }) }
     catch { throw new ApiError(502, '사고 데이터 서버 연결에 실패했습니다. 잠시 후 다시 시도하세요.') }
-    if (!response.ok) throw new ApiError(502, '공공데이터 요청에 실패했습니다. 인증키와 활용승인 상태를 확인하세요.')
     let data
     try { data = await response.json() }
-    catch { throw new ApiError(502, '사고 데이터 서버가 JSON 대신 다른 응답을 보냈습니다. 인증키와 서비스 상태를 확인하세요.') }
+    catch {
+      if (!response.ok) throw new ApiError(response.status === 429 ? 429 : 502, response.status === 429 ? RATE_MESSAGES['23'] : '공공데이터 요청에 실패했습니다. 인증키와 활용승인 상태를 확인하세요.')
+      throw new ApiError(502, '사고 데이터 서버가 JSON 대신 다른 응답을 보냈습니다. 인증키와 서비스 상태를 확인하세요.')
+    }
+    // 공공데이터포털 게이트웨이 오류(호출 한도·인증)는 HTTP 오류와 함께 별도 형식으로 옵니다.
+    const gateway = data?.OpenAPI_ServiceResponse?.cmmMsgHeader
+    if (gateway) data = { resultCode: gateway.returnReasonCode }
+    else if (!response.ok) throw new ApiError(502, '공공데이터 요청에 실패했습니다. 인증키와 활용승인 상태를 확인하세요.')
     const parsed = parseAccidentResponse(data)
     items.push(...parsed.items)
     if (items.length >= parsed.total) return items.map(item => normalizeHazard(item, year))
@@ -71,18 +94,34 @@ async function loadDistrict(year, district, key, fetcher) {
   throw new ApiError(502, '사고 데이터 전체 페이지를 받지 못했습니다. 다시 시도하세요.')
 }
 
+// 한 지역의 현재·이전 코드를 모두 조회합니다. 하나라도 실패하면 지역 전체를 실패로 봅니다.
+export async function loadRegion(year, region, key, fetcher = fetch) {
+  const results = []
+  for (const code of region.codes) results.push(...await loadRegionCode(year, code, key, fetcher))
+  return [...new Map(results.map(h => [h.id, { ...h, regionCode: region.code }])).values()]
+}
+
+export function parseBounds(params) {
+  const names = ['minLat', 'minLng', 'maxLat', 'maxLng']
+  if (names.every(n => !params.has(n))) return null
+  const [minLat, minLng, maxLat, maxLng] = names.map(n => Number(params.get(n)))
+  if (![minLat, minLng, maxLat, maxLng].every(Number.isFinite) || minLat > maxLat || minLng > maxLng
+    || minLat < 30 || maxLat > 40 || minLng < 120 || maxLng > 135) throw new ApiError(400, '경로 범위를 확인하세요.')
+  return { minLat, minLng, maxLat, maxLng }
+}
+
+const inside = (b, outer) => b.minLat >= outer.minLat && b.maxLat <= outer.maxLat && b.minLng >= outer.minLng && b.maxLng <= outer.maxLng
+
 export async function getAccidents(params, rawKey, fetcher = fetch) {
   const year = Number(params.get('year') || '2024')
   if (!Number.isInteger(year) || year < 2017 || year > 2024) throw new ApiError(400, '조회 연도는 2017~2024년으로 선택하세요.')
-  if (!rawKey) throw new ApiError(503, '.env.local에 DATA_GO_KR_SERVICE_KEY를 추가하고 서버를 다시 시작하세요.')
-  let key = rawKey.trim()
-  if (/%[0-9a-f]{2}/i.test(key)) { try { key = decodeURIComponent(key) } catch { throw new ApiError(400, '공공데이터 인증키의 형식을 확인하세요.') } }
+  const key = decodeServiceKey(rawKey)
   const cacheKey = `${year}:${key}`
   const cached = cache.get(cacheKey)
   if (fetcher === fetch && cached && Date.now() - cached.time < 3600000) return cached.data
   if (fetcher === fetch && pending.has(cacheKey)) return pending.get(cacheKey)
   const load = async () => {
-    const results = await Promise.all(DISTRICTS.map(d => loadDistrict(year, d, key, fetcher)))
+    const results = await Promise.all(DAEJEON_REGIONS.map(r => loadRegion(year, r, key, fetcher)))
     const hazards = [...new Map(results.flat().map(h => [h.id, h])).values()]
     const data = { hazards, year, region: '대전광역시 5개 구', source: '한국도로교통공단 법규위반별 교통사고 다발지역', sourceUrl: 'https://www.data.go.kr/data/15058087/openapi.do', loadedAt: new Date().toISOString() }
     if (fetcher === fetch) { cache.clear(); cache.set(cacheKey, { time: Date.now(), data }) }
@@ -101,8 +140,13 @@ export async function handleAccidents(req, res, key, database = {}) {
     const params = new URL(req.url, 'http://localhost').searchParams
     const year = Number(params.get('year') || '2024')
     if (!Number.isInteger(year) || year < 2017 || year > 2024) throw new ApiError(400, '조회 연도는 2017~2024년으로 선택하세요.')
+    const bounds = parseBounds(params)
+    if (!bounds) throw new ApiError(400, '경로 범위(minLat, minLng, maxLat, maxLng)가 필요합니다.')
     let stored = null
-    try { stored = await getStoredAccidents(year, database.url, database.key) } catch { /* DB 장애 때는 기존 API를 사용합니다. */ }
+    try { stored = await getStoredAccidents(year, bounds, database.url, database.key) } catch { /* DB 장애 때는 아래 대체 경로를 사용합니다. */ }
+    // 전국 수집이 끝나지 않은 연도는 대전 안의 경로만 실시간 API로 대신 조회합니다.
+    // 다른 지역 경로를 대전 자료로 계산하면 위험지역이 없는 것처럼 보이므로 오류로 알립니다.
+    if (!stored && !inside(bounds, DAEJEON_BOUNDS)) throw new ApiError(503, `${year}년 전국 사고 데이터가 아직 준비되지 않았습니다. 전국 수집을 완료한 뒤 다시 시도하세요.`)
     const data = stored || await getAccidents(params, key)
     res.statusCode = 200
     res.end(JSON.stringify(data))

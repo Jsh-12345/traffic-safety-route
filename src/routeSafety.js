@@ -26,6 +26,19 @@ export function scoreRoute(route, hazards) {
   return { ...route, hazards: matched, risk: matched.reduce((sum, h) => sum + calculateHazardScore(h), 0) }
 }
 
+// 모든 후보 경로를 감싸는 범위에 가장 큰 판정 반경(300m)보다 넉넉한 여유를 더합니다.
+export function routeBounds(routes, padding = 0.005) {
+  const points = routes.flatMap(r => r.points || [])
+  if (!points.length) throw new Error('경로 좌표가 없습니다.')
+  const lats = points.map(p => p[0]), lngs = points.map(p => p[1])
+  const lngPadding = padding / Math.cos(Math.max(...lats.map(Math.abs)) * Math.PI / 180)
+  const round = (value, direction) => Math[direction](value * 1000) / 1000
+  return {
+    minLat: round(Math.min(...lats) - padding, 'floor'), minLng: round(Math.min(...lngs) - lngPadding, 'floor'),
+    maxLat: round(Math.max(...lats) + padding, 'ceil'), maxLng: round(Math.max(...lngs) + lngPadding, 'ceil'),
+  }
+}
+
 export function rankRoutes(routes, safetyLevel) {
   const weight = Number(safetyLevel) / 100
   if (!Number.isFinite(weight) || weight < 0 || weight > 1 || !routes.length) throw new Error('추천 조건을 확인하세요.')

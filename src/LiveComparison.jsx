@@ -243,7 +243,7 @@ export default function LiveComparison({ route, safetyLevel, archived = null }) 
       {route.accidentError && <p role="alert" className="analysis-warning">사고 데이터 분석 불가: {route.accidentError} 빠른 경로만 제공합니다.</p>}
       {route.accidentData && !ready && <p role="status">{route.accidentData.year}년 대전 조회 결과가 0건입니다. 안전점수를 판단하지 않고 빠른 경로만 표시합니다.</p>}
       {ready && <>
-        <p>{route.accidentData.year}년 · {route.accidentData.region} · 수집된 사고 다발지역 {route.accidentData.hazards.length}개</p>
+        <p>{route.accidentData.year}년 · {route.accidentData.region} · 경로 주변에서 조회한 사고 다발지역 {route.accidentData.hazards.length}개</p>
         <details className="analysis-warning"><summary>이 점수는 대전의 일부 사고 다발지역을 기준으로 비교합니다. 자세히 보기</summary>
           <p>대전의 신호위반·중앙선침범 사고 다발지역만 반영합니다. 시외 구간과 다른 사고 유형은 포함되지 않으며, 0점은 안전 보장을 뜻하지 않습니다.</p>
         </details>

@@ -35,6 +35,7 @@ create policy "Read completed accident imports" on public.accident_imports
   for select to anon, authenticated using (true);
 grant select on public.accident_imports to anon, authenticated;
 grant all on public.accident_imports to service_role;
+-- 전국 수집용 열과 지역별 수집 상태 테이블은 national_accidents.sql을 이어서 실행합니다.
 
 create table if not exists public.route_analyses (
   id uuid primary key default gen_random_uuid(),
