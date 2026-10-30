@@ -506,3 +506,17 @@ legend {
 .map-scroll-hint { display: block; color: #526277; margin-bottom: 8px; flex-shrink: 0; }
 .map-dialog { overflow-y: auto; }
 .actual-route .map-dialog .location-map { min-height: 180px; }
+
+/* Narrow the page moderately; the expanded map retains its independent width. */
+.service-header, .search-card { width: min(100%, 1160px); }
+.history-banner, .save-notice { max-width: 1160px; }
+.route-option > strong, .route-option > span { word-break: keep-all; }
+.risk-value { white-space: nowrap; text-decoration: underline dotted; text-underline-offset: 4px; cursor: help; }
+.risk-value:focus-visible { outline: 2px solid #087f5b; outline-offset: 3px; border-radius: 3px; }
+.hazard-location-button { border: 0; background: transparent; color: #075c43; padding: 4px 0; font: inherit; font-weight: 700; text-align: left; cursor: pointer; }
+.hazard-location-button:hover { text-decoration: underline; }
+.hazard-location-button span { display: inline-block; margin-left: 8px; font-size: 12px; font-weight: 500; white-space: nowrap; }
+.hazard-list .selected-hazard { border-left: 4px solid #7c3aed; padding-left: 12px; background: #f5f3ff; }
+.hazard-selection-notice { margin: 6px 0; padding: 8px 10px; color: #5b21b6; background: #f5f3ff; font-size: 13px; flex-shrink: 0; }
+.hazard-selection-notice button { margin-left: 8px; border: 1px solid #c4b5fd; border-radius: 6px; padding: 4px 8px; background: white; color: #5b21b6; cursor: pointer; }
+.hazard-help, .hazard-radius-note { font-size: 13px; color: #475569; line-height: 1.6; }

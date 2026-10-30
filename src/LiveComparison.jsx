@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 import { rankRoutes, scoreRoute } from './routeSafety.js'
+import RiskValue from './RiskValue.jsx'
 import { RISK_WEIGHTS } from './riskScore.js'
 import { riskSegments } from './riskSegments.js'
 import { getCurrentLocation } from './currentLocation.js'
@@ -16,6 +17,7 @@ export default function LiveComparison({ route, safetyLevel, archived = null }) 
   const currentLocationLayerRef = useRef(null)
   const [highlightedId, setHighlightedId] = useState(null)
   const [riskView, setRiskView] = useState(false)
+  const [selectedHazardId, setSelectedHazardId] = useState(null)
   const [locating, setLocating] = useState(false)
   const [locationMessage, setLocationMessage] = useState('')
   const ready = !!route.accidentData?.hazards.length
@@ -29,6 +31,7 @@ export default function LiveComparison({ route, safetyLevel, archived = null }) 
   const fastest = useMemo(() => [...ranked].sort((a, b) => a.duration - b.duration || a.distance - b.distance)[0], [ranked])
   const secondCard = recommended.id === fastest.id ? ranked.find(r => r.id !== fastest.id) : recommended
   const hazards = useMemo(() => ready ? [...new Map(ranked.flatMap(r => r.hazards).map(h => [h.id, h])).values()] : [], [ranked, ready])
+  const selectedHazard = hazards.find(h => h.id === selectedHazardId)
   const routeStyles = useMemo(() => {
     const colors = ['#2563eb', '#087f5b', '#d97706', '#9333ea', '#be185d', '#0891b2']
     const dashes = [null, '12 6', '3 7', '14 5 3 5']
@@ -39,6 +42,19 @@ export default function LiveComparison({ route, safetyLevel, archived = null }) 
   const focused = ranked.find(r => r.id === highlightedId) || recommended
   const weights = archived?.weights || RISK_WEIGHTS
   const hazardScore = h => h.accidents * weights.accidents + h.injuries * weights.injuries + h.fatalities * weights.fatalities
+  const selectRoute = id => { setSelectedHazardId(null); setHighlightedId(id) }
+  const showHazard = h => {
+    setSelectedHazardId(h.id)
+    setRiskView(false)
+    setHighlightedId(null)
+    // 같은 지역을 다시 눌러도 이동한 지도를 해당 지역으로 돌려놓습니다.
+    mapRef.current?.fitBounds(L.latLng(h.lat, h.lng).toBounds(h.radius * 2), { padding: [40, 40], maxZoom: 16 })
+    container.current?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+  }
+  const showAllBounds = () => {
+    setSelectedHazardId(null)
+    if (routeBoundsRef.current) mapRef.current?.fitBounds(routeBoundsRef.current, { padding: [36, 36], maxZoom: 16 })
+  }
   useEffect(() => {
     const map = L.map(container.current, { scrollWheelZoom: expanded })
     mapRef.current = map
@@ -51,7 +67,7 @@ export default function LiveComparison({ route, safetyLevel, archived = null }) 
       const label = document.createElement('span')
       label.textContent = `후보 ${candidate.id.replace('route-', '')} · ${(candidate.duration / 60).toFixed(1)}분 · ${(candidate.distance / 1000).toFixed(1)}km`
       for (const road of candidate.segments || [candidate.points]) L.polyline(road, options)
-        .bindTooltip(label).on('click', () => setHighlightedId(candidate.id)).addTo(map)
+        .bindTooltip(label).on('click', () => { setSelectedHazardId(null); setHighlightedId(candidate.id) }).addTo(map)
       candidate.points.forEach(p => bounds.extend(p))
     }
     // 후보별 고유 색상을 유지하고 공유 도로의 좌표는 옮기지 않습니다.
@@ -79,13 +95,23 @@ export default function LiveComparison({ route, safetyLevel, archived = null }) 
     for (const [point, label, color] of [[route.start, '출발지', '#087f5b'], [route.destination, '목적지', '#2563eb']]) {
       L.circleMarker([point.lat, point.lng], { color, fillOpacity: 1, radius: 8 }).bindTooltip(label, { permanent: true }).addTo(map)
     }
+    let selectedBounds
+    if (selectedHazard) {
+      const h = selectedHazard
+      L.circle([h.lat, h.lng], { radius: h.radius, color: '#7c3aed', weight: 4, fillOpacity: .22 }).addTo(map)
+      const label = document.createElement('span')
+      label.textContent = `${h.label} · ${h.typeLabel} · 반경 ${h.radius}m`
+      L.circleMarker([h.lat, h.lng], { radius: 8, color: '#fff', weight: 3, fillColor: '#7c3aed', fillOpacity: 1 })
+        .bindTooltip(label, { permanent: true, direction: 'top' }).addTo(map)
+      selectedBounds = L.latLng(h.lat, h.lng).toBounds(h.radius * 2)
+    }
     let frame
     const fit = () => {
       cancelAnimationFrame(frame)
       frame = requestAnimationFrame(() => {
         if (!container.current?.clientWidth || !container.current?.clientHeight) return
         map.invalidateSize({ pan: false })
-        map.fitBounds(bounds, { padding: [36, 36], maxZoom: 16, animate: false })
+        map.fitBounds(selectedBounds || bounds, { padding: [40, 40], maxZoom: 16, animate: false })
       })
     }
     const observer = new ResizeObserver(fit)
@@ -107,7 +133,7 @@ export default function LiveComparison({ route, safetyLevel, archived = null }) 
       routeBoundsRef.current = null
       currentLocationLayerRef.current = null
     }
-  }, [route, recommended, fastest, hazards, ranked, highlightedId, riskView, focused, ready, weights, expanded, routeStyles])
+  }, [route, recommended, fastest, hazards, ranked, highlightedId, riskView, focused, ready, weights, expanded, routeStyles, selectedHazard])
 
   useEffect(() => {
     if (!expanded) return
@@ -119,6 +145,7 @@ export default function LiveComparison({ route, safetyLevel, archived = null }) 
   }, [expanded])
 
   const showCurrentLocation = async () => {
+    setSelectedHazardId(null)
     setLocating(true)
     setLocationMessage('현재 위치를 확인하는 중입니다…')
     try {
@@ -145,21 +172,22 @@ export default function LiveComparison({ route, safetyLevel, archived = null }) 
       <div className="map-toolbar">
         <button type="button" onClick={() => setExpanded(!expanded)}>{expanded ? '지도 닫기 (Esc)' : '지도 크게 보기'}</button>
         <button type="button" className="current-location-button" onClick={showCurrentLocation} disabled={locating}>{locating ? '위치 확인 중…' : '◎ 내 현재 위치 보기'}</button>
-        <button type="button" onClick={() => mapRef.current?.fitBounds(routeBoundsRef.current, { padding: [35, 35] })}>경로 전체 보기</button>
+        <button type="button" onClick={showAllBounds}>경로 전체 보기</button>
       </div>
       <div className="map-view-switch" role="group" aria-label="경로 표시 방식">
         <button type="button" aria-pressed={!riskView} onClick={() => {
-          setRiskView(false); setHighlightedId(null)
+          setRiskView(false); setHighlightedId(null); setSelectedHazardId(null)
           if (routeBoundsRef.current) mapRef.current?.fitBounds(routeBoundsRef.current, { padding: [36, 36], maxZoom: 16 })
         }}>모든 경로 한눈에 보기</button>
-        <button type="button" aria-pressed={riskView} onClick={() => setRiskView(true)}>선택 경로 위험 구간 보기</button>
+        <button type="button" aria-pressed={riskView} onClick={() => { setSelectedHazardId(null); setRiskView(true) }}>선택 경로 위험 구간 보기</button>
       </div>
       <div className="candidate-map-legend" aria-label="후보 경로 선택">{ranked.map(r => <button type="button" key={r.id}
-        aria-pressed={highlightedId === r.id} onClick={() => setHighlightedId(highlightedId === r.id ? null : r.id)}>
+        aria-pressed={highlightedId === r.id} onClick={() => selectRoute(highlightedId === r.id ? null : r.id)}>
         <i style={{ borderColor: routeStyles[r.id].color, borderTopStyle: routeStyles[r.id].dashArray ? 'dashed' : 'solid' }} />{routeLabel(r)}</button>)}</div>
       {riskView ? <p className="map-view-note"><strong>초록: 수집 자료에서 근접 지역 없음 · 주황: 사고다발지역 반경과 겹침 · 회색: 다른 후보</strong><br />{ready ? '선택 경로의 관련 지역만 표시합니다. 초록색도 안전을 보장하지 않습니다.' : '사고 자료가 없어 경로를 회색으로 표시합니다.'}</p>
         : <p className="map-view-note">모든 후보를 색상별로 표시합니다. 같은 도로를 지나는 부분은 겹칠 수 있으니 위의 후보 버튼으로 강조해 비교하세요. 빨간 원은 사고다발지역입니다.</p>}
       <small className="map-scroll-hint">{expanded ? '마우스 휠 또는 + / − 버튼으로 확대·축소하세요.' : '지도 확대·축소는 + / − 버튼을 사용하세요. 크게 보기에서는 마우스 휠도 사용할 수 있습니다.'}</small>
+      {selectedHazard && <p className="hazard-selection-notice" role="status">지도에서 강조 중: {selectedHazard.label} · {selectedHazard.typeLabel} · 반경 {selectedHazard.radius}m <button type="button" onClick={showAllBounds}>강조 해제 · 전체 경로</button></p>}
       {locationMessage && <p role="status" className="location-feedback">{locationMessage}</p>}
       <div ref={container} className="location-map" aria-label="실제 후보 경로와 사고 다발지역 지도" />
   </>
@@ -185,9 +213,9 @@ export default function LiveComparison({ route, safetyLevel, archived = null }) 
               <div><dt>예상 소요시간</dt><dd>{(candidate.duration / 60).toFixed(1)}<small>분</small></dd></div>
               <div><dt>이동거리</dt><dd>{(candidate.distance / 1000).toFixed(1)}<small>km</small></dd></div>
               <div><dt>관련 위험지역</dt><dd>{ready ? candidate.hazards.length : '—'}<small>{ready ? '곳' : ''}</small></dd></div>
-              <div><dt>위험점수</dt><dd>{ready ? candidate.risk : '—'}<small>{ready ? '점' : ''}</small></dd></div>
+              <div><dt>위험점수</dt><dd>{ready ? <RiskValue value={candidate.risk} hazards={candidate.hazards} weights={weights} /> : '—'}</dd></div>
             </dl>
-            <button type="button" aria-pressed={highlightedId === candidate.id} onClick={() => setHighlightedId(highlightedId === candidate.id ? null : candidate.id)}>
+            <button type="button" aria-pressed={highlightedId === candidate.id} onClick={() => selectRoute(highlightedId === candidate.id ? null : candidate.id)}>
               {highlightedId === candidate.id ? '지도에서 강조 중 · 해제' : `${name} 지도에서 강조`}
             </button>
           </article>
@@ -196,12 +224,13 @@ export default function LiveComparison({ route, safetyLevel, archived = null }) 
       {ready && secondCard && <p className="route-card-summary">{recommended.id === fastest.id ? '현재 설정에서는 빠른 경로가 추천 경로입니다.' : `추천 경로는 빠른 경로보다 ${(recommended.duration - fastest.duration) / 60 >= 0 ? '+' : ''}${((recommended.duration - fastest.duration) / 60).toFixed(1)}분, 위험점수 ${fastest.risk - recommended.risk}점 낮습니다.`} 두 경로의 수치는 조회된 후보를 기준으로 계산했습니다.</p>}
       </details>
       {ready && <div className="risk-visual-summary">
-        <strong>{highlightedId ? '선택한' : '추천'} 경로 · 위험점수 {focused.risk}점 · 관련 지역 {focused.hazards.length}곳</strong>
+        <strong>{highlightedId ? '선택한' : '추천'} 경로 · 위험점수 <RiskValue value={focused.risk} hazards={focused.hazards} weights={weights} /> · 관련 지역 {focused.hazards.length}곳</strong>
         <div className="risk-bars">{ranked.map(r => <div key={r.id}><span>후보 {r.id.replace('route-', '')}{r.id === recommended.id ? ' · 추천' : ''}</span>
-          <progress value={r.risk} max={Math.max(1, ...ranked.map(x => x.risk))} aria-label={`${r.id} 위험점수 ${r.risk}`} /><b>{r.risk}점</b></div>)}</div>
-        <small>막대가 짧을수록 수집된 사고 자료의 가중합이 낮습니다. 실제 사고 확률이 아닙니다.</small>
+          <progress value={r.risk} max={Math.max(1, ...ranked.map(x => x.risk))} aria-label={`${r.id} 위험점수 ${r.risk}`} /><b><RiskValue value={r.risk} hazards={r.hazards} weights={weights} /></b></div>)}</div>
+        <small>점수에 마우스를 올리면 계산 내역이 표시됩니다. 막대가 짧을수록 수집된 사고 자료의 가중합이 낮습니다. 실제 사고 확률이 아닙니다.</small>
       </div>}
       {expanded ? <dialog ref={dialogRef} className="map-dialog" aria-label="경로 지도 크게 보기" onCancel={event => { event.preventDefault(); setExpanded(false) }}>{mapPanel}</dialog> : <div className="map-panel">{mapPanel}</div>}
+      <p className="hazard-radius-note">원은 지역 중심점 기준의 거리 범위입니다. 현재 설정은 신호위반 반경 100m, 중앙선침범 반경 300m이며, 원의 크기는 위험점수와 무관합니다. 저장 기록은 저장 당시 반경을 사용합니다.</p>
       {route.accidentError && <p role="alert" className="analysis-warning">사고 데이터 분석 불가: {route.accidentError} 빠른 경로만 제공합니다.</p>}
       {route.accidentData && !ready && <p role="status">{route.accidentData.year}년 대전 조회 결과가 0건입니다. 안전점수를 판단하지 않고 빠른 경로만 표시합니다.</p>}
       {ready && <>
@@ -217,12 +246,12 @@ export default function LiveComparison({ route, safetyLevel, archived = null }) 
           <thead><tr><th scope="col">경로</th><th scope="col">예상 시간</th><th scope="col">거리</th><th scope="col">관련 지역</th><th scope="col">위험점수</th><th scope="col">종합점수</th></tr></thead>
           <tbody>{ranked.map(r => <tr key={r.id} className={r.id === recommended.id ? 'recommended-row' : ''}>
             <th scope="row">{r.id === recommended.id && <span className="table-recommend-badge">추천</span>}{r.id === fastest.id ? '빠른 경로' : `후보 ${r.id.replace('route-', '')}`}
-              <button type="button" className="route-highlight-button" aria-label={`${r.id === fastest.id ? '빠른 경로' : `후보 ${r.id.replace('route-', '')}`} 지도에서 ${highlightedId === r.id ? '강조 해제' : '강조'}`} title="지도에서 강조" aria-pressed={highlightedId === r.id} onClick={() => setHighlightedId(highlightedId === r.id ? null : r.id)}>
+              <button type="button" className="route-highlight-button" aria-label={`${r.id === fastest.id ? '빠른 경로' : `후보 ${r.id.replace('route-', '')}`} 지도에서 ${highlightedId === r.id ? '강조 해제' : '강조'}`} title="지도에서 강조" aria-pressed={highlightedId === r.id} onClick={() => selectRoute(highlightedId === r.id ? null : r.id)}>
                 ◎
               </button>
             </th>
             <td data-label="예상 시간">{(r.duration / 60).toFixed(1)}분</td><td data-label="거리">{(r.distance / 1000).toFixed(1)}km</td>
-            <td data-label="관련 지역">{r.hazards.length}개</td><td data-label="위험점수">{r.risk}점</td><td data-label="종합점수">{r.combined.toFixed(3)}</td>
+            <td data-label="관련 지역">{r.hazards.length}개</td><td data-label="위험점수"><RiskValue value={r.risk} hazards={r.hazards} weights={weights} /></td><td data-label="종합점수">{r.combined.toFixed(3)}</td>
           </tr>)}</tbody>
         </table></div>
         <details className="method-details"><summary>위험점수·종합점수 계산 방법</summary>
@@ -230,9 +259,10 @@ export default function LiveComparison({ route, safetyLevel, archived = null }) 
           <p>종합점수 = 정규화 시간×(1−안전 가중치) + 정규화 위험점수×안전 가중치. 낮을수록 우선하며 동점이면 짧은 시간을 선택합니다. 가중치는 프로젝트용 임시 기준입니다.</p>
         </details>
         {hazards.length > 0 && <details><summary>관련 사고 다발지역 상세정보 ({hazards.length}개)</summary>
-          <ul className="hazard-list">{hazards.map(h => <li key={h.id}>
-            <strong>{h.label} · {h.typeLabel}</strong>
-            <p>사고 {h.accidents}건 · 부상 {h.injuries}명 · 사망 {h.fatalities}명 · {hazardScore(h)}점 · 반경 {h.radius}m · {h.year}년</p>
+          <p className="hazard-help">지역 이름을 누르면 지도에서 위치를 강조합니다. 점수에 마우스를 올리면 계산 내역을 볼 수 있습니다.</p>
+          <ul className="hazard-list">{hazards.map(h => <li key={h.id} className={selectedHazardId === h.id ? 'selected-hazard' : ''}>
+            <button type="button" className="hazard-location-button" onClick={() => showHazard(h)} aria-label={`${h.label} ${h.typeLabel} 지도에서 위치 보기`}>{h.label} · {h.typeLabel} <span>지도에서 보기 ↗</span></button>
+            <p>사고 {h.accidents}건 · 부상 {h.injuries}명 · 사망 {h.fatalities}명 · <RiskValue value={hazardScore(h)} hazards={[h]} weights={weights} /> · 반경 {h.radius}m · {h.year}년</p>
           </li>)}</ul>
         </details>}
         <p>자료: <a href={route.accidentData.sourceUrl} target="_blank" rel="noreferrer">{route.accidentData.source}</a></p>
