@@ -1,3 +1,4 @@
+import { canScoreAccidents } from './accidentAvailability.js'
 import { RISK_WEIGHTS } from './riskScore.js'
 import { rankRoutes, scoreRoute } from './routeSafety.js'
 
@@ -19,7 +20,7 @@ export function broadRegion(point) {
 }
 
 export function makeAnalysisRecord(route, routeType, safetyLevel, userId, dataYear, saveExactLocation = false) {
-  const hasAccidents = !!route.accidentData?.hazards?.length
+  const hasAccidents = canScoreAccidents(route.accidentData)
   const candidates = route.routes || [route]
   const scored = hasAccidents ? candidates.map(candidate => scoreRoute(candidate, route.accidentData.hazards)) : candidates
   const ranked = hasAccidents ? rankRoutes(scored, safetyLevel) : [...scored].sort((a, b) => a.duration - b.duration)

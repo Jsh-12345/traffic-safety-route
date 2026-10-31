@@ -1,3 +1,4 @@
+import { canScoreAccidents } from './accidentAvailability.js'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
@@ -22,7 +23,7 @@ export default function LiveComparison({ route, safetyLevel, archived = null }) 
   const [selectedHazardId, setSelectedHazardId] = useState(null)
   const [locating, setLocating] = useState(false)
   const [locationMessage, setLocationMessage] = useState('')
-  const ready = !!route.accidentData?.hazards.length
+  const ready = canScoreAccidents(route.accidentData)
   const scored = useMemo(() => {
     if (archived) return archived.ranked
     const candidates = route.routes || [route]
@@ -241,11 +242,11 @@ export default function LiveComparison({ route, safetyLevel, archived = null }) 
       {expanded ? <dialog ref={dialogRef} className="map-dialog" aria-label="경로 지도 크게 보기" onCancel={event => { event.preventDefault(); setExpanded(false) }}>{mapPanel}</dialog> : <div className="map-panel">{mapPanel}</div>}
       <p className="hazard-radius-note">채워진 원은 위험점수가 높을수록 커지는 비교용 기호이며 실제 거리 범위가 아닙니다. 지역 선택 시 회색 점선으로 판정 반경(신호위반 100m·중앙선침범 300m)을 따로 표시합니다. 경로 점수와 저장 기록은 기존 판정 반경을 사용합니다.</p>
       {route.accidentError && <p role="alert" className="analysis-warning">사고 데이터 분석 불가: {route.accidentError} 빠른 경로만 제공합니다.</p>}
-      {route.accidentData && !ready && <p role="status">{route.accidentData.year}년 대전 조회 결과가 0건입니다. 안전점수를 판단하지 않고 빠른 경로만 표시합니다.</p>}
+      {ready && route.accidentData.hazards.length === 0 && <p role="status">경로 주변에서 조회된 사고 다발지역이 0개입니다. 수집 자료 기준 위험점수는 0점이며, 실제 사고 위험이 없다는 뜻은 아닙니다.</p>}
       {ready && <>
         <p>{route.accidentData.year}년 · {route.accidentData.region} · 경로 주변에서 조회한 사고 다발지역 {route.accidentData.hazards.length}개</p>
-        <details className="analysis-warning"><summary>이 점수는 대전의 일부 사고 다발지역을 기준으로 비교합니다. 자세히 보기</summary>
-          <p>대전의 신호위반·중앙선침범 사고 다발지역만 반영합니다. 시외 구간과 다른 사고 유형은 포함되지 않으며, 0점은 안전 보장을 뜻하지 않습니다.</p>
+        <details className="analysis-warning"><summary>이 점수는 전국에서 수집한 일부 유형의 사고 다발지역을 기준으로 비교합니다. 자세히 보기</summary>
+          <p>선택 연도의 전국 신호위반·중앙선침범 사고 다발지역 중 경로 주변 자료만 반영합니다. 다른 사고 유형과 모든 개별 사고를 포함하지 않으며, 0점은 안전 보장을 뜻하지 않습니다.</p>
         </details>
         {ranked.length === 1 && <p>서로 다른 도로 경로가 1개라 다른 경로와 비교할 수 없습니다. 위의 받은 경로 수와 중복 제거 수를 확인하세요.</p>}
         {ranked.length > 1 && new Set(ranked.map(r => r.risk)).size === 1 && <p>후보들의 위험점수가 같아 이동시간이 가장 짧은 경로를 추천합니다.</p>}

@@ -3,8 +3,6 @@ import { getStoredAccidents } from './accidentStore.js'
 import { DAEJEON_REGIONS } from './accidentRegions.js'
 
 export const DISTRICTS = DAEJEON_REGIONS.map(r => r.code.slice(2)) // 대전 동구·중구·서구·유성구·대덕구
-// DB에 전국 자료가 없을 때 실시간 API로 대신할 수 있는 범위(대전)입니다.
-const DAEJEON_BOUNDS = { minLat: 36.18, maxLat: 36.5, minLng: 127.24, maxLng: 127.56 }
 const cache = new Map()
 const pending = new Map()
 
@@ -110,7 +108,6 @@ export function parseBounds(params) {
   return { minLat, minLng, maxLat, maxLng }
 }
 
-const inside = (b, outer) => b.minLat >= outer.minLat && b.maxLat <= outer.maxLat && b.minLng >= outer.minLng && b.maxLng <= outer.maxLng
 
 export async function getAccidents(params, rawKey, fetcher = fetch) {
   const year = Number(params.get('year') || '2024')
@@ -132,7 +129,7 @@ export async function getAccidents(params, rawKey, fetcher = fetch) {
   try { return await promise } finally { pending.delete(cacheKey) }
 }
 
-export async function handleAccidents(req, res, key, database = {}) {
+export async function handleAccidents(req, res, _key, database = {}) {
   res.setHeader('Content-Type', 'application/json; charset=utf-8')
   res.setHeader('Cache-Control', 'no-store')
   try {
@@ -142,12 +139,10 @@ export async function handleAccidents(req, res, key, database = {}) {
     if (!Number.isInteger(year) || year < 2017 || year > 2024) throw new ApiError(400, '조회 연도는 2017~2024년으로 선택하세요.')
     const bounds = parseBounds(params)
     if (!bounds) throw new ApiError(400, '경로 범위(minLat, minLng, maxLat, maxLng)가 필요합니다.')
-    let stored = null
-    try { stored = await getStoredAccidents(year, bounds, database.url, database.key) } catch { /* DB 장애 때는 아래 대체 경로를 사용합니다. */ }
-    // 전국 수집이 끝나지 않은 연도는 대전 안의 경로만 실시간 API로 대신 조회합니다.
-    // 다른 지역 경로를 대전 자료로 계산하면 위험지역이 없는 것처럼 보이므로 오류로 알립니다.
-    if (!stored && !inside(bounds, DAEJEON_BOUNDS)) throw new ApiError(503, `${year}년 전국 사고 데이터가 아직 준비되지 않았습니다. 전국 수집을 완료한 뒤 다시 시도하세요.`)
-    const data = stored || await getAccidents(params, key)
+    let data
+    try { data = await getStoredAccidents(year, bounds, database.url, database.key) }
+    catch { throw new ApiError(503, '사고 데이터 DB 연결을 확인하지 못했습니다. 잠시 후 다시 시도하세요.') }
+    if (!data) throw new ApiError(503, `${year}년 전국 사고 데이터가 준비되지 않았거나 DB 조회에 실패했습니다. 전국 수집 완료 상태와 DB 설정을 확인하세요.`)
     res.statusCode = 200
     res.end(JSON.stringify(data))
   } catch (error) {

@@ -26,7 +26,7 @@ export async function getStoredAccidents(year, bounds, url, key) {
       radius: row.radius, accidents: row.accidents, injuries: row.injuries,
       fatalities: row.fatalities,
     })),
-    year, region: '전국 (경로 주변)', bounds,
+    year, region: '전국 (경로 주변)', bounds, coverageComplete: true,
     source: '한국도로교통공단 법규위반별 교통사고 다발지역',
     sourceUrl: 'https://www.data.go.kr/data/15058087/openapi.do',
     loadedAt: complete.imported_at,
