@@ -1,3 +1,4 @@
+import { accountError, koreanError } from './koreanErrors.js'
 import { useEffect, useState } from 'react'
 import { authConfigured, supabase } from './supabaseClient'
 import './AuthGate.css'
@@ -113,9 +114,7 @@ function AuthGate({ children }) {
       clearPasswords()
       if (mode === 'signup') setNickname('')
     } catch (error) {
-      setNotice(mode === 'signup' && (error.code === 'unexpected_failure' || /database error saving new user/i.test(error.message))
-        ? '가입하지 못했습니다. 이미 사용 중인 닉네임일 수 있으니 다른 닉네임으로 다시 시도해 주세요. 계속 실패하면 관리자에게 문의해 주세요.'
-        : error.message || '요청을 처리하지 못했습니다. 다시 시도해 주세요.')
+      setNotice(accountError(error, mode))
     } finally {
       setBusy(false)
     }
@@ -130,7 +129,7 @@ function AuthGate({ children }) {
         <NicknameSettings key={session.user.id} user={session.user} />
         <button type="button" onClick={async () => {
           const { error } = await supabase.auth.signOut()
-          if (error) setNotice(error.message)
+          if (error) setNotice(koreanError(error, '로그아웃하지 못했습니다. 다시 시도해 주세요.', { keepKorean: false }))
           else switchMode('login')
         }}>로그아웃</button>
       </div>

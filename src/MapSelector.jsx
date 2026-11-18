@@ -1,3 +1,4 @@
+import { koreanError } from './koreanErrors.js'
 import { useEffect, useRef, useState } from 'react'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
@@ -116,7 +117,7 @@ export default function MapSelector({ start, destination, onSelect }) {
       mapRef.current.setView([lat, lng], 15)
       setLocationMessage(`현재 위치를 표시했습니다 (오차 약 ${Math.round(accuracy)}m).`)
     } catch (error) {
-      setLocationMessage(error.message)
+      setLocationMessage(koreanError(error, '현재 위치를 찾지 못했습니다. 위치 권한을 확인해 주세요.'))
     } finally {
       setLocating(false)
     }

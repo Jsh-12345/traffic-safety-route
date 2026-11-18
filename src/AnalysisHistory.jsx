@@ -1,3 +1,4 @@
+import { koreanError } from './koreanErrors.js'
 import { formatPeriod, formatRisk } from './accidentPeriod.js'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { supabase } from './supabaseClient.js'
@@ -29,7 +30,7 @@ export default function AnalysisHistory({ refreshKey, onOpen }) {
       .select('id,created_at,start_region,destination_region,start_label,destination_label,start_address,destination_address,start_lat,start_lng,destination_lat,destination_lng,data_year,data_year_end,route_type,safety_level,accident_data_available,recommended_route,candidates')
       .order('created_at', { ascending: false }).limit(20)
     setLoading(false)
-    if (error) { setNotice(`기록을 읽지 못했습니다: ${error.message}`); return }
+    if (error) { setNotice(koreanError(error, '기록을 불러오지 못했습니다. 다시 시도해 주세요.', { keepKorean: false })); return }
     setRecords(data)
     setNotice('')
   }, [])
@@ -40,7 +41,7 @@ export default function AnalysisHistory({ refreshKey, onOpen }) {
 
   const remove = async (id) => {
     const { error } = await supabase.from('route_analyses').delete().eq('id', id)
-    if (error) { setNotice(`삭제하지 못했습니다: ${error.message}`); return }
+    if (error) { setNotice(koreanError(error, '기록을 삭제하지 못했습니다. 다시 시도해 주세요.', { keepKorean: false })); return }
     setSelected(null)
     await load()
   }

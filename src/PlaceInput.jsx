@@ -1,3 +1,4 @@
+import { koreanError } from './koreanErrors.js'
 import { useEffect, useState } from 'react'
 
 export default function PlaceInput({ id, label, value, selected, onChange, onSelect }) {
@@ -14,7 +15,7 @@ export default function PlaceInput({ id, label, value, selected, onChange, onSel
         if (!response.ok) throw new Error(data.error || '검색에 실패했습니다.')
         if (!controller.signal.aborted) setResult({ query: value, places: data.places, message: data.places.length ? '검색 결과에서 장소를 선택하세요.' : '검색 결과가 없습니다. 주소를 입력하거나 지도에서 선택하세요.' })
       } catch (error) {
-        if (!controller.signal.aborted) setResult({ query: value, places: [], message: error.message })
+        if (!controller.signal.aborted) setResult({ query: value, places: [], message: koreanError(error, '장소를 검색하지 못했습니다. 잠시 후 다시 시도해 주세요.') })
       }
     }, 600)
     return () => { clearTimeout(timer); controller.abort() }

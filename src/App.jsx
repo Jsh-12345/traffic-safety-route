@@ -1,3 +1,4 @@
+import { koreanError } from './koreanErrors.js'
 import { ACCIDENT_YEARS, formatPeriod, formatRisk, loadAccidentPeriod, selectedYears } from './accidentPeriod.js'
 import { useContext, useEffect, useRef, useState } from 'react'
 import './App.css'
@@ -161,7 +162,7 @@ function App() {
       ])
       const data = { ...directions, requestedYears: years,
         accidentData: accidents.status === 'fulfilled' ? accidents.value : null,
-        accidentError: accidents.status === 'rejected' ? accidents.reason.message : '',
+        accidentError: accidents.status === 'rejected' ? koreanError(accidents.reason, '사고 자료를 조회하지 못했습니다. 다시 시도해 주세요.') : '',
       }
       if (!controller.signal.aborted) {
         setShowMap(false)
@@ -184,14 +185,14 @@ function App() {
             const record = makeAnalysisRecord(result, routeType, safetyLevel, auth.user.id, startYear, includeExactLocation)
             const { error: saveError } = await supabase.from('route_analyses').insert(record)
             if (!controller.signal.aborted) {
-              setSaveNotice(saveError ? `기록 저장 실패: ${saveError.message}` : includeExactLocation ? '분석 결과와 정확한 위치를 내 계정에 저장했습니다.' : '분석 결과를 지역 단위로 저장했습니다.')
+              setSaveNotice(saveError ? koreanError(saveError, '분석 기록을 저장하지 못했습니다. 다시 시도해 주세요.', { keepKorean: false }) : includeExactLocation ? '분석 결과와 정확한 위치를 내 계정에 저장했습니다.' : '분석 결과를 지역 단위로 저장했습니다.')
               if (!saveError) setHistoryRefresh(previous => previous + 1)
             }
           }
         }
       }
     } catch (error) {
-      if (!controller.signal.aborted) setMessage(error.message)
+      if (!controller.signal.aborted) setMessage(koreanError(error, '경로를 조회하지 못했습니다. 잠시 후 다시 시도해 주세요.'))
     } finally {
       if (!controller.signal.aborted) setLoading(false)
     }

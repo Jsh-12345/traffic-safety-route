@@ -1,3 +1,5 @@
+import { koreanError } from './koreanErrors.js'
+import { rankRiskWithinCandidates } from './riskRanking.js'
 import { formatPeriod, formatRisk, scoreRouteForPeriod } from './accidentPeriod.js'
 import { routeAppearance, routeDrawOrder } from './routeAppearance.js'
 import { canScoreAccidents } from './accidentAvailability.js'
@@ -36,6 +38,7 @@ export default function LiveComparison({ route, safetyLevel, archived = null }) 
     return ready ? candidates.map(r => scoreRouteForPeriod(r, route.accidentData)) : candidates
   }, [route, ready, archived])
   const ranked = useMemo(() => archived?.ranked || (ready ? rankRoutes(scored, safetyLevel) : [...scored].sort((a, b) => a.duration - b.duration || a.distance - b.distance)), [scored, safetyLevel, ready, archived])
+  const riskRanks = useMemo(() => rankRiskWithinCandidates(ranked), [ranked])
   const recommended = ranked[0]
   const fastest = useMemo(() => [...ranked].sort((a, b) => a.duration - b.duration || a.distance - b.distance)[0], [ranked])
   const secondCard = recommended.id === fastest.id ? ranked.find(r => r.id !== fastest.id) : recommended
@@ -176,7 +179,7 @@ export default function LiveComparison({ route, safetyLevel, archived = null }) 
       map.setView([lat, lng], 15)
       setLocationMessage(`현재 위치를 표시했습니다 (오차 약 ${Math.round(accuracy)}m).`)
     } catch (error) {
-      setLocationMessage(error.message)
+      setLocationMessage(koreanError(error, '현재 위치를 찾지 못했습니다. 위치 권한을 확인해 주세요.'))
     } finally {
       setLocating(false)
     }
@@ -209,7 +212,7 @@ export default function LiveComparison({ route, safetyLevel, archived = null }) 
   return (
     <section id="analysis-result" className="search-card actual-route" aria-label="실제 후보 경로 비교 결과">
       <p className="eyebrow">실제 자동차 경로 · 후보 {ranked.length}개</p>
-      {route.routeSearch?.failedPriorities.length > 0 && <p role="status" className="analysis-warning">일부 경로 조회 실패: {route.routeSearch.failedPriorities.join(', ')}. 표시된 후보만 비교합니다.</p>}
+      {route.routeSearch?.failedPriorities.length > 0 && <p role="status" className="analysis-warning">일부 경로 조회 실패: {route.routeSearch.failedPriorities.map(priority => ({ TIME: '시간 우선', DISTANCE: '거리 우선', RECOMMEND: '카카오 추천' })[priority] || '기타 검색 조건').join(', ')}. 표시된 후보만 비교합니다.</p>}
       <div className="result-hero">
         <span className="result-badge">{ready ? '추천 경로' : '빠른 경로'}</span>
         <strong className="result-metrics">약 {Math.max(1, Math.ceil(recommended.duration / 60))}분 <span>· {(recommended.distance / 1000).toFixed(1)}km</span></strong>
@@ -255,6 +258,7 @@ export default function LiveComparison({ route, safetyLevel, archived = null }) 
         {ranked.length === 1 && <p>서로 다른 도로 경로가 1개라 다른 경로와 비교할 수 없습니다. 위의 받은 경로 수와 중복 제거 수를 확인하세요.</p>}
         {ranked.length > 1 && new Set(ranked.map(r => r.risk)).size === 1 && <p>후보들의 위험점수가 같아 이동시간이 가장 짧은 경로를 추천합니다.</p>}
         {ranked.length > 1 && new Set(ranked.map(r => r.risk)).size > 1 && recommended.id === fastest.id && <p>현재 가중치에서는 빠른 경로와 추천 경로가 같습니다.</p>}
+        {riskRanks.size > 0 && <p className="map-view-note">위험 순위는 이번에 조회한 후보의 점수만 낮은 순으로 비교한 결과입니다. 이동시간을 반영한 추천 순위와 다를 수 있습니다.</p>}
         <div className="candidate-table-wrap"><table className="candidate-table">
           <caption>후보별 비교 · 안전 우선 {safetyLevel}%</caption>
           <thead><tr><th scope="col">경로</th><th scope="col">예상 시간</th><th scope="col">거리</th><th scope="col">{countLabel}</th><th scope="col">{riskLabel}</th><th scope="col">종합점수</th></tr></thead>
@@ -265,7 +269,7 @@ export default function LiveComparison({ route, safetyLevel, archived = null }) 
               </button>
             </th>
             <td data-label="예상 시간">{(r.duration / 60).toFixed(1)}분</td><td data-label="거리">{(r.distance / 1000).toFixed(1)}km</td>
-            <td data-label={countLabel}>{r.hazards.length}개</td><td data-label={riskLabel}><RiskValue value={r.risk} hazards={r.hazards} annualScores={r.annualScores} weights={weights} /></td><td data-label="종합점수">{r.combined.toFixed(3)}</td>
+            <td data-label={countLabel}>{r.hazards.length}개</td><td data-label={riskLabel}><RiskValue value={r.risk} hazards={r.hazards} annualScores={r.annualScores} weights={weights} />{riskRanks.has(r.id) && <small className="candidate-risk-rank">{riskRanks.get(r.id)}</small>}</td><td data-label="종합점수">{r.combined.toFixed(3)}</td>
           </tr>)}</tbody>
         </table></div>
         <details className="method-details"><summary>위험점수·종합점수 계산 방법</summary>

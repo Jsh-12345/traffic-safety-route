@@ -1,3 +1,4 @@
+import { koreanError } from './koreanErrors.js'
 import { useEffect, useState } from 'react'
 import { supabase } from './supabaseClient.js'
 export default function NicknameSettings({ user }) {
@@ -22,7 +23,7 @@ export default function NicknameSettings({ user }) {
       const { error } = await supabase.from('login_profiles').upsert({ user_id: user.id, nickname: value }, { onConflict: 'user_id' })
       if (error) throw Error(error.code === '23505' ? '이미 사용 중인 닉네임입니다.' : '저장하지 못했습니다. DB 설정을 확인해 주세요.')
       setSaved(value); setNickname(value); setMessage('저장했습니다. 다음부터 닉네임과 기존 비밀번호로 로그인할 수 있습니다.')
-    } catch (error) { setMessage(error.message) } finally { setBusy(false) }
+    } catch (error) { setMessage(koreanError(error, '닉네임을 설정하지 못했습니다. 다시 시도해 주세요.')) } finally { setBusy(false) }
   }
   return <details className="nickname-settings"><summary>{saved ? `${saved} · 닉네임 변경` : '닉네임 설정하기'}</summary>
     <form onSubmit={save}><label>로그인 닉네임 <input value={nickname} onChange={e => setNickname(e.target.value)} maxLength={20} required autoComplete="username" /></label>

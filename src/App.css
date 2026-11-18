@@ -529,3 +529,5 @@ legend {
 .risk-explanation-popup { position: fixed; z-index: 10000; box-sizing: border-box; padding: 12px 14px; border: 1px solid #9bbfb0; border-radius: 10px; background: #fff; color: #172033; box-shadow: 0 6px 24px rgb(15 23 42 / 18%); font-size: 13px; line-height: 1.7; text-align: left; overflow-y: auto; pointer-events: auto; }
 .risk-explanation-popup strong { display: block; margin-bottom: 5px; color: #075c43; }
 .risk-explanation-popup div { white-space: pre-line; overflow-wrap: anywhere; }
+
+.candidate-risk-rank { display: block; margin-top: 4px; color: #526277; font-size: .78rem; white-space: normal; }
