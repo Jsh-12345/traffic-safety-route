@@ -1,3 +1,4 @@
+import { ACCIDENT_YEARS, formatPeriod, formatRisk, loadAccidentPeriod, selectedYears } from './accidentPeriod.js'
 import { useContext, useEffect, useRef, useState } from 'react'
 import './App.css'
 import { AccessContext } from './AccessContext.js'
@@ -34,7 +35,8 @@ function App() {
   const [destination, setDestination] = useState('')
   const [routeType, setRouteType] = useState('balanced')
   const [safetyLevel, setSafetyLevel] = useState(50)
-  const [dataYear, setDataYear] = useState('2024')
+  const [startYear, setStartYear] = useState('2024')
+  const [endYear, setEndYear] = useState('2024')
   const [saveExactLocation, setSaveExactLocation] = useState(false)
   const [message, setMessage] = useState('')
   const [showMap, setShowMap] = useState(false)
@@ -68,7 +70,7 @@ function App() {
     setStart(restored.start); setDestination(restored.destination)
     setStartPoint(restored.startPoint); setEndPoint(restored.endPoint)
     setSafetyLevel(restored.safetyLevel); setRouteType(record.route_type)
-    setDataYear(restored.dataYear); setShowMap(false)
+    setStartYear(restored.dataYear); setEndYear(restored.endYear); setShowMap(false)
     setArchived(restored.archived); setActualRoute(restored.route); setHistoryRecord(record)
   }
   const changeText = (target, value) => {
@@ -151,9 +153,13 @@ function App() {
       regionsRequest.catch(() => {})
       const directions = await fetchJson(`/api/directions?${params}`)
       // 모든 후보 경로 주변의 사고 다발지역만 요청합니다.
-      const bounds = new URLSearchParams({ year: dataYear, ...routeBounds(directions.routes || [directions]) })
-      const [accidents, regions] = await Promise.allSettled([fetchJson(`/api/accidents?${bounds}`), regionsRequest])
-      const data = { ...directions,
+      const bounds = routeBounds(directions.routes || [directions])
+      const years = selectedYears(startYear, endYear)
+      const [accidents, regions] = await Promise.allSettled([
+        loadAccidentPeriod(years, year => fetchJson(`/api/accidents?${new URLSearchParams({ year, ...bounds })}`)),
+        regionsRequest,
+      ])
+      const data = { ...directions, requestedYears: years,
         accidentData: accidents.status === 'fulfilled' ? accidents.value : null,
         accidentError: accidents.status === 'rejected' ? accidents.reason.message : '',
       }
@@ -175,7 +181,7 @@ function App() {
           if (controller.signal.aborted) return
           if (authError || !auth.user) setSaveNotice('로그인 상태를 확인하지 못해 분석 기록을 저장하지 못했습니다.')
           else {
-            const record = makeAnalysisRecord(result, routeType, safetyLevel, auth.user.id, dataYear, includeExactLocation)
+            const record = makeAnalysisRecord(result, routeType, safetyLevel, auth.user.id, startYear, includeExactLocation)
             const { error: saveError } = await supabase.from('route_analyses').insert(record)
             if (!controller.signal.aborted) {
               setSaveNotice(saveError ? `기록 저장 실패: ${saveError.message}` : includeExactLocation ? '분석 결과와 정확한 위치를 내 계정에 저장했습니다.' : '분석 결과를 지역 단위로 저장했습니다.')
@@ -301,12 +307,24 @@ function App() {
             </div>
           </div>
 
-          <div className="year-picker">
-            <label htmlFor="data-year">사고 데이터 기준 연도</label>
-            <select id="data-year" value={dataYear} onChange={e => { invalidate(); setDataYear(e.target.value) }}>
-              {['2024', '2023', '2022', '2021'].map(year => <option key={year} value={year}>{year}년</option>)}
-            </select>
-          </div>
+          <fieldset className="year-picker">
+            <legend>사고 데이터 분석 기간</legend>
+            <label htmlFor="start-year">시작 연도
+              <select id="start-year" value={startYear} onChange={e => {
+                invalidate(); setStartYear(e.target.value)
+                if (Number(e.target.value) > Number(endYear)) setEndYear(e.target.value)
+              }}>
+                {ACCIDENT_YEARS.map(year => <option key={year} value={year}>{year}년</option>)}
+              </select>
+            </label>
+            <label htmlFor="end-year">종료 연도
+              <select id="end-year" value={endYear} onChange={e => { invalidate(); setEndYear(e.target.value) }}>
+                {ACCIDENT_YEARS.filter(year => year >= Number(startYear)).map(year =>
+                  <option key={year} value={year}>{year}년</option>)}
+              </select>
+            </label>
+            <small>시작·종료 연도를 모두 포함합니다. 한 해만 보려면 같은 연도를 선택하세요.</small>
+          </fieldset>
           {!isGuest && <label className="exact-location-option" htmlFor="save-exact-location">
             <input id="save-exact-location" type="checkbox" checked={saveExactLocation}
               onChange={event => setSaveExactLocation(event.target.checked)} />
@@ -314,7 +332,7 @@ function App() {
               <small>선택하면 당시 후보 경로·사고 자료·점수도 함께 저장하며, 로그인한 본인만 조회하고 기록을 삭제할 수 있습니다. 지도에서 직접 찍은 점은 주소 대신 좌표가 저장될 수 있습니다.</small></span>
           </label>}
           {isGuest && <p className="api-note">비회원 분석 결과는 계정에 저장되지 않습니다. 로그인 전환이나 새로고침 시 현재 결과가 사라집니다.</p>}
-          <p className="api-note">빠른 경로는 안전 가중치 0%, 안전 우선은 100%입니다. 조회 후 슬라이더를 바꾸면 받은 후보들의 추천 순위가 바로 갱신됩니다. 사고 데이터는 선택 연도의 전국 신호위반·중앙선침범 사고 다발지역을 사용합니다.</p>
+          <p className="api-note">빠른 경로는 안전 가중치 0%, 안전 우선은 100%입니다. 조회 후 슬라이더를 바꾸면 받은 후보들의 추천 순위가 바로 갱신됩니다. 사고 데이터는 선택 기간의 전국 신호위반·중앙선침범 사고 다발지역을 사용합니다.</p>
           <button className="analyze-button" type="submit" disabled={loading}>
             {loading ? '경로 조회 중…' : '실제 경로 분석하기'}
           </button>
@@ -331,8 +349,8 @@ function App() {
       {actualRoute && <LiveComparison key={historyRecord?.id || 'live'} route={actualRoute} safetyLevel={safetyLevel} archived={archived} />}
       {historyRecord && !actualRoute && <section id="analysis-result" className="search-card legacy-result">
         <h2>{start} → {destination}</h2>
-        <p>이전 기록에는 경로선이 저장되지 않아 당시 지도는 복원할 수 없습니다. 저장된 비교 결과를 표시합니다.</p>
-        <ul>{historyRecord.candidates.map(c => <li key={c.id}>{c.id === historyRecord.recommended_route ? '추천 · ' : ''}{c.id} · {(c.duration / 60).toFixed(1)}분 · {(c.distance / 1000).toFixed(1)}km · 위험점수 {c.risk ?? '자료 없음'}</li>)}</ul>
+        <p>이전 기록에는 경로선이 저장되지 않아 당시 지도는 복원할 수 없습니다. 저장된 비교 결과를 표시합니다. · {formatPeriod(historyRecord.data_year, historyRecord.data_year_end ?? historyRecord.data_year)} 자료</p>
+        <ul>{historyRecord.candidates.map(c => <li key={c.id}>{c.id === historyRecord.recommended_route ? '추천 · ' : ''}{c.id} · {(c.duration / 60).toFixed(1)}분 · {(c.distance / 1000).toFixed(1)}km · {historyRecord.data_year_end > historyRecord.data_year ? '연평균 위험점수' : '위험점수'} {formatRisk(c.risk)}</li>)}</ul>
       </section>}
       {actualRoute && saveNotice && <p className="save-notice" role="status">{saveNotice}</p>}
       {!isGuest && <AnalysisHistory refreshKey={historyRefresh} onOpen={openHistory} />}

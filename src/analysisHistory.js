@@ -1,6 +1,7 @@
+import { scoreRouteForPeriod } from './accidentPeriod.js'
 import { canScoreAccidents } from './accidentAvailability.js'
 import { RISK_WEIGHTS } from './riskScore.js'
-import { rankRoutes, scoreRoute } from './routeSafety.js'
+import { rankRoutes } from './routeSafety.js'
 
 export function broadRegion(point) {
   if (point?.region) return String(point.region).slice(0, 60)
@@ -22,8 +23,9 @@ export function broadRegion(point) {
 export function makeAnalysisRecord(route, routeType, safetyLevel, userId, dataYear, saveExactLocation = false) {
   const hasAccidents = canScoreAccidents(route.accidentData)
   const candidates = route.routes || [route]
-  const scored = hasAccidents ? candidates.map(candidate => scoreRoute(candidate, route.accidentData.hazards)) : candidates
+  const scored = hasAccidents ? candidates.map(candidate => scoreRouteForPeriod(candidate, route.accidentData)) : candidates
   const ranked = hasAccidents ? rankRoutes(scored, safetyLevel) : [...scored].sort((a, b) => a.duration - b.duration)
+  const years = route.requestedYears || route.accidentData?.years
   return {
     user_id: userId,
     start_region: broadRegion(route.start),
@@ -36,7 +38,8 @@ export function makeAnalysisRecord(route, routeType, safetyLevel, userId, dataYe
     start_lng: saveExactLocation ? route.start.lng : null,
     destination_lat: saveExactLocation ? route.destination.lat : null,
     destination_lng: saveExactLocation ? route.destination.lng : null,
-    data_year: route.accidentData?.year || Number(dataYear),
+    data_year: years?.[0] ?? (route.accidentData?.year || Number(dataYear)),
+    ...(years?.length > 1 ? { data_year_end: years.at(-1) } : {}),
     route_type: routeType,
     safety_level: Number(safetyLevel),
     accident_data_available: hasAccidents,

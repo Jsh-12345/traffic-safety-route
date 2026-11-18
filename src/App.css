@@ -398,7 +398,9 @@ legend {
   outline-offset: 3px;
 }
 
-.year-picker { display: flex; align-items: center; gap: 12px; margin-top: 20px; }
+.year-picker { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin: 20px 0 0; padding: 12px; min-inline-size: 0; border: 1px solid #d0d5dd; border-radius: 8px; }
+.year-picker label { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.year-picker small { flex-basis: 100%; color: #526277; }
 .year-picker select { padding: 8px; border: 1px solid #d0d5dd; border-radius: 8px; background: white; }
 .candidate-table-wrap { overflow-x: auto; }
 .candidate-table { border-collapse: collapse; width: 100%; font-size: 14px; }

@@ -1,9 +1,19 @@
 import { useEffect, useId, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
+import { formatRisk } from './accidentPeriod.js'
 import { explainRisk } from './riskExplanation.js'
 
-export default function RiskValue({ value, hazards, weights }) {
-  const explanation = explainRisk(hazards, weights)
+export default function RiskValue({ value, hazards, weights, annualScores }) {
+  const multipleYears = annualScores?.length > 1
+  const label = multipleYears ? '연평균 위험점수' : '위험점수'
+  const displayedValue = formatRisk(value)
+  const explanation = multipleYears
+    ? [
+      ...annualScores.map(({ year, risk }) => `${year}년: ${risk}점`),
+      `합계 ${annualScores.reduce((sum, item) => sum + item.risk, 0)}점 ÷ ${annualScores.length}년 = ${displayedValue}점 (소수 둘째 자리까지 표시)`,
+      '실제 사고 확률이 아닌 비교용 점수입니다.',
+    ].join('\n')
+    : explainRisk(hazards, weights)
   const id = useId()
   const anchor = useRef(null)
   const popup = useRef(null)
@@ -42,12 +52,12 @@ export default function RiskValue({ value, hazards, weights }) {
     }
   }, [position])
   return <>
-    <button ref={anchor} type="button" className="risk-value" aria-label={`위험점수 ${value}점, 계산 내역 보기`}
+    <button ref={anchor} type="button" className="risk-value" aria-label={`${label} ${displayedValue}점, 계산 내역 보기`}
       aria-describedby={position ? id : undefined} aria-expanded={!!position}
-      onMouseEnter={open} onMouseLeave={closeSoon} onFocus={open} onBlur={closeSoon} onClick={open}>{value}점</button>
+      onMouseEnter={open} onMouseLeave={closeSoon} onFocus={open} onBlur={closeSoon} onClick={open}>{displayedValue}점</button>
     {position && createPortal(<div ref={popup} id={id} role="tooltip" className="risk-explanation-popup" style={position}
       onMouseEnter={keepOpen} onMouseLeave={closeSoon}>
-      <strong>위험점수 계산 내역</strong><div>{explanation}</div>
+      <strong>{label} 계산 내역</strong><div>{explanation}</div>
     </div>, document.body)}
   </>
 }

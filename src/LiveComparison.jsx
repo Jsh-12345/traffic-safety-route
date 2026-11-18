@@ -1,9 +1,10 @@
+import { formatPeriod, formatRisk, scoreRouteForPeriod } from './accidentPeriod.js'
 import { routeAppearance, routeDrawOrder } from './routeAppearance.js'
 import { canScoreAccidents } from './accidentAvailability.js'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
-import { rankRoutes, scoreRoute } from './routeSafety.js'
+import { rankRoutes } from './routeSafety.js'
 import RiskValue from './RiskValue.jsx'
 import { hazardMarkerRadius } from './hazardMarker.js'
 import { explainRisk } from './riskExplanation.js'
@@ -25,10 +26,14 @@ export default function LiveComparison({ route, safetyLevel, archived = null }) 
   const [locating, setLocating] = useState(false)
   const [locationMessage, setLocationMessage] = useState('')
   const ready = canScoreAccidents(route.accidentData)
+  const years = route.requestedYears || route.accidentData?.years
+  const riskLabel = years?.length > 1 ? '연평균 위험점수' : '위험점수'
+  const periodLabel = years?.length ? formatPeriod(years[0], years.at(-1)) : formatPeriod(route.accidentData?.year)
+  const countLabel = years?.length > 1 ? '관련 지역 자료' : '관련 지역'
   const scored = useMemo(() => {
     if (archived) return archived.ranked
     const candidates = route.routes || [route]
-    return ready ? candidates.map(r => scoreRoute(r, route.accidentData.hazards)) : candidates
+    return ready ? candidates.map(r => scoreRouteForPeriod(r, route.accidentData)) : candidates
   }, [route, ready, archived])
   const ranked = useMemo(() => archived?.ranked || (ready ? rankRoutes(scored, safetyLevel) : [...scored].sort((a, b) => a.duration - b.duration || a.distance - b.distance)), [scored, safetyLevel, ready, archived])
   const recommended = ranked[0]
@@ -209,7 +214,7 @@ export default function LiveComparison({ route, safetyLevel, archived = null }) 
         <span className="result-badge">{ready ? '추천 경로' : '빠른 경로'}</span>
         <strong className="result-metrics">약 {Math.max(1, Math.ceil(recommended.duration / 60))}분 <span>· {(recommended.distance / 1000).toFixed(1)}km</span></strong>
         <h2>{route.start.label} → {route.destination.label}</h2>
-        {ready && recommended.id !== fastest.id && <p>빠른 경로보다 약 {Math.max(0, Math.round((recommended.duration - fastest.duration) / 60))}분 더 소요 · 위험점수 {fastest.risk - recommended.risk}점 감소</p>}
+        {ready && recommended.id !== fastest.id && <p>빠른 경로보다 약 {Math.max(0, Math.round((recommended.duration - fastest.duration) / 60))}분 더 소요 · {riskLabel} {formatRisk(fastest.risk - recommended.risk)}점 감소</p>}
       </div>
       <details className="compact-cards"><summary>경로별 상세 수치 보기</summary>
       <div className="live-route-cards" aria-label="실제 경로 요약 비교">
@@ -221,8 +226,8 @@ export default function LiveComparison({ route, safetyLevel, archived = null }) 
             <dl>
               <div><dt>예상 소요시간</dt><dd>{(candidate.duration / 60).toFixed(1)}<small>분</small></dd></div>
               <div><dt>이동거리</dt><dd>{(candidate.distance / 1000).toFixed(1)}<small>km</small></dd></div>
-              <div><dt>관련 위험지역</dt><dd>{ready ? candidate.hazards.length : '—'}<small>{ready ? '곳' : ''}</small></dd></div>
-              <div><dt>위험점수</dt><dd>{ready ? <RiskValue value={candidate.risk} hazards={candidate.hazards} weights={weights} /> : '—'}</dd></div>
+              <div><dt>{countLabel}</dt><dd>{ready ? candidate.hazards.length : '—'}<small>{ready ? '개' : ''}</small></dd></div>
+              <div><dt>{riskLabel}</dt><dd>{ready ? <RiskValue value={candidate.risk} hazards={candidate.hazards} annualScores={candidate.annualScores} weights={weights} /> : '—'}</dd></div>
             </dl>
             <button type="button" aria-pressed={highlightedId === candidate.id} onClick={() => selectRoute(highlightedId === candidate.id ? null : candidate.id)}>
               {highlightedId === candidate.id ? '지도에서 강조 중 · 해제' : `${name} 지도에서 강조`}
@@ -230,12 +235,12 @@ export default function LiveComparison({ route, safetyLevel, archived = null }) 
           </article>
         })}
       </div>
-      {ready && secondCard && <p className="route-card-summary">{recommended.id === fastest.id ? '현재 설정에서는 빠른 경로가 추천 경로입니다.' : `추천 경로는 빠른 경로보다 ${(recommended.duration - fastest.duration) / 60 >= 0 ? '+' : ''}${((recommended.duration - fastest.duration) / 60).toFixed(1)}분, 위험점수 ${fastest.risk - recommended.risk}점 낮습니다.`} 두 경로의 수치는 조회된 후보를 기준으로 계산했습니다.</p>}
+      {ready && secondCard && <p className="route-card-summary">{recommended.id === fastest.id ? '현재 설정에서는 빠른 경로가 추천 경로입니다.' : `추천 경로는 빠른 경로보다 ${(recommended.duration - fastest.duration) / 60 >= 0 ? '+' : ''}${((recommended.duration - fastest.duration) / 60).toFixed(1)}분, ${riskLabel} ${formatRisk(fastest.risk - recommended.risk)}점 낮습니다.`} 두 경로의 수치는 조회된 후보를 기준으로 계산했습니다.</p>}
       </details>
       {ready && <div className="risk-visual-summary">
-        <strong>{highlightedId ? '선택한' : '추천'} 경로 · 위험점수 <RiskValue value={focused.risk} hazards={focused.hazards} weights={weights} /> · 관련 지역 {focused.hazards.length}곳</strong>
+        <strong>{highlightedId ? '선택한' : '추천'} 경로 · {riskLabel} <RiskValue value={focused.risk} hazards={focused.hazards} annualScores={focused.annualScores} weights={weights} /> · {countLabel} {focused.hazards.length}개</strong>
         <div className="risk-bars">{ranked.map(r => <div key={r.id}><span>후보 {r.id.replace('route-', '')}{r.id === recommended.id ? ' · 추천' : ''}</span>
-          <progress value={r.risk} max={Math.max(1, ...ranked.map(x => x.risk))} aria-label={`${r.id} 위험점수 ${r.risk}`} /><b><RiskValue value={r.risk} hazards={r.hazards} weights={weights} /></b></div>)}</div>
+          <progress value={r.risk} max={Math.max(1, ...ranked.map(x => x.risk))} aria-label={`${r.id} ${riskLabel} ${formatRisk(r.risk)}`} /><b><RiskValue value={r.risk} hazards={r.hazards} annualScores={r.annualScores} weights={weights} /></b></div>)}</div>
         <small>점수에 마우스를 올리거나 클릭하면 계산 내역이 표시됩니다. 막대가 짧을수록 수집된 사고 자료의 가중합이 낮습니다. 실제 사고 확률이 아닙니다.</small>
       </div>}
       {expanded ? <dialog ref={dialogRef} className="map-dialog" aria-label="경로 지도 크게 보기" onCancel={event => { event.preventDefault(); setExpanded(false) }}>{mapPanel}</dialog> : <div className="map-panel">{mapPanel}</div>}
@@ -243,16 +248,16 @@ export default function LiveComparison({ route, safetyLevel, archived = null }) 
       {route.accidentError && <p role="alert" className="analysis-warning">사고 데이터 분석 불가: {route.accidentError} 빠른 경로만 제공합니다.</p>}
       {ready && route.accidentData.hazards.length === 0 && <p role="status">경로 주변에서 조회된 사고 다발지역이 0개입니다. 수집 자료 기준 위험점수는 0점이며, 실제 사고 위험이 없다는 뜻은 아닙니다.</p>}
       {ready && <>
-        <p>{route.accidentData.year}년 · {route.accidentData.region} · 경로 주변에서 조회한 사고 다발지역 {route.accidentData.hazards.length}개</p>
+        <p>{periodLabel} · {route.accidentData.region} · 경로 주변에서 조회한 사고 다발지역 {route.accidentData.hazards.length}개</p>
         <details className="analysis-warning"><summary>이 점수는 전국에서 수집한 일부 유형의 사고 다발지역을 기준으로 비교합니다. 자세히 보기</summary>
-          <p>선택 연도의 전국 신호위반·중앙선침범 사고 다발지역 중 경로 주변 자료만 반영합니다. 다른 사고 유형과 모든 개별 사고를 포함하지 않으며, 0점은 안전 보장을 뜻하지 않습니다.</p>
+          <p>선택 기간의 전국 신호위반·중앙선침범 사고 다발지역 중 경로 주변 자료만 반영합니다. 다른 사고 유형과 모든 개별 사고를 포함하지 않으며, 0점은 안전 보장을 뜻하지 않습니다.</p>
         </details>
         {ranked.length === 1 && <p>서로 다른 도로 경로가 1개라 다른 경로와 비교할 수 없습니다. 위의 받은 경로 수와 중복 제거 수를 확인하세요.</p>}
         {ranked.length > 1 && new Set(ranked.map(r => r.risk)).size === 1 && <p>후보들의 위험점수가 같아 이동시간이 가장 짧은 경로를 추천합니다.</p>}
         {ranked.length > 1 && new Set(ranked.map(r => r.risk)).size > 1 && recommended.id === fastest.id && <p>현재 가중치에서는 빠른 경로와 추천 경로가 같습니다.</p>}
         <div className="candidate-table-wrap"><table className="candidate-table">
           <caption>후보별 비교 · 안전 우선 {safetyLevel}%</caption>
-          <thead><tr><th scope="col">경로</th><th scope="col">예상 시간</th><th scope="col">거리</th><th scope="col">관련 지역</th><th scope="col">위험점수</th><th scope="col">종합점수</th></tr></thead>
+          <thead><tr><th scope="col">경로</th><th scope="col">예상 시간</th><th scope="col">거리</th><th scope="col">{countLabel}</th><th scope="col">{riskLabel}</th><th scope="col">종합점수</th></tr></thead>
           <tbody>{ranked.map(r => <tr key={r.id} className={r.id === recommended.id ? 'recommended-row' : ''}>
             <th scope="row">{r.id === recommended.id && <span className="table-recommend-badge">추천</span>}{r.id === fastest.id ? '빠른 경로' : `후보 ${r.id.replace('route-', '')}`}
               <button type="button" className="route-highlight-button" aria-label={`${r.id === fastest.id ? '빠른 경로' : `후보 ${r.id.replace('route-', '')}`} 지도에서 ${highlightedId === r.id ? '강조 해제' : '강조'}`} title="지도에서 강조" aria-pressed={highlightedId === r.id} onClick={() => selectRoute(highlightedId === r.id ? null : r.id)}>
@@ -260,11 +265,12 @@ export default function LiveComparison({ route, safetyLevel, archived = null }) 
               </button>
             </th>
             <td data-label="예상 시간">{(r.duration / 60).toFixed(1)}분</td><td data-label="거리">{(r.distance / 1000).toFixed(1)}km</td>
-            <td data-label="관련 지역">{r.hazards.length}개</td><td data-label="위험점수"><RiskValue value={r.risk} hazards={r.hazards} weights={weights} /></td><td data-label="종합점수">{r.combined.toFixed(3)}</td>
+            <td data-label={countLabel}>{r.hazards.length}개</td><td data-label={riskLabel}><RiskValue value={r.risk} hazards={r.hazards} annualScores={r.annualScores} weights={weights} /></td><td data-label="종합점수">{r.combined.toFixed(3)}</td>
           </tr>)}</tbody>
         </table></div>
         <details className="method-details"><summary>위험점수·종합점수 계산 방법</summary>
-          <p>위험점수 = 사고×{weights.accidents} + 부상×{weights.injuries} + 사망×{weights.fatalities}. 같은 지역은 경로당 한 번만 합산합니다.</p>
+          <p>위험점수 = 사고×{weights.accidents} + 부상×{weights.injuries} + 사망×{weights.fatalities}. 같은 지역 자료는 한 경로에서 연도별로 한 번만 합산합니다.</p>
+          {years?.length > 1 && <p>연평균 위험점수 = 연도별 위험점수 합계 ÷ {years.length}년. 정상 조회 결과 관련 지역이 없는 해는 0점으로 반영합니다. 같은 장소의 여러 연도 자료는 각각 해당 연도에 반영합니다.</p>}
           <p>종합점수 = 정규화 시간×(1−안전 가중치) + 정규화 위험점수×안전 가중치. 낮을수록 우선하며 동점이면 짧은 시간을 선택합니다. 가중치는 프로젝트용 임시 기준입니다.</p>
         </details>
         {hazards.length > 0 && <details><summary>관련 사고 다발지역 상세정보 ({hazards.length}개)</summary>

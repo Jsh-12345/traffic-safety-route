@@ -1,3 +1,4 @@
+import { formatPeriod, formatRisk } from './accidentPeriod.js'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { supabase } from './supabaseClient.js'
 
@@ -25,7 +26,7 @@ export default function AnalysisHistory({ refreshKey, onOpen }) {
     if (!supabase) return
     setLoading(true)
     const { data, error } = await supabase.from('route_analyses')
-      .select('id,created_at,start_region,destination_region,start_label,destination_label,start_address,destination_address,start_lat,start_lng,destination_lat,destination_lng,data_year,route_type,safety_level,accident_data_available,recommended_route,candidates')
+      .select('id,created_at,start_region,destination_region,start_label,destination_label,start_address,destination_address,start_lat,start_lng,destination_lat,destination_lng,data_year,data_year_end,route_type,safety_level,accident_data_available,recommended_route,candidates')
       .order('created_at', { ascending: false }).limit(20)
     setLoading(false)
     if (error) { setNotice(`기록을 읽지 못했습니다: ${error.message}`); return }
@@ -51,7 +52,7 @@ export default function AnalysisHistory({ refreshKey, onOpen }) {
     {!loading && !records.length && !notice && <p>저장된 분석 기록이 없습니다.</p>}
     <ul className="history-list">{records.map(record => <li key={record.id}>
       <div className="history-item"><div><strong>{record.start_label || record.start_region} → {record.destination_label || record.destination_region}</strong>
-        <small>{new Date(record.created_at).toLocaleString('ko-KR')} · {record.data_year}년 자료 · 안전 우선 {record.safety_level}%</small></div>
+        <small>{new Date(record.created_at).toLocaleString('ko-KR')} · {formatPeriod(record.data_year, record.data_year_end ?? record.data_year)} 자료 · 안전 우선 {record.safety_level}%</small></div>
         <div className="history-actions"><button type="button" onClick={() => open(record)} disabled={opening !== null}>{opening === record.id ? '불러오는 중…' : '결과 보기'}</button>
           <button type="button" onClick={() => remove(record.id)} aria-label="이 기록 삭제">삭제</button></div></div>
       {selected === record.id && <div className="history-detail">
@@ -62,7 +63,7 @@ export default function AnalysisHistory({ refreshKey, onOpen }) {
           {record.destination_lat != null && record.destination_lng != null && ` · 좌표 ${record.destination_lat}, ${record.destination_lng}`}</p>}
         <p>추천 경로: {record.recommended_route} · {record.accident_data_available ? '사고 자료 반영' : '사고 자료 없음'}</p>
         <ul>{record.candidates.map((candidate, index) => <li key={`${candidate.id}-${index}`}><strong>{candidate.id === record.recommended_route ? '추천 · ' : ''}후보 {index + 1}</strong>
-          {' '}약 {Math.ceil(candidate.duration / 60)}분 · {(candidate.distance / 1000).toFixed(1)}km · 위험점수 {candidate.risk ?? '자료 없음'}</li>)}</ul>
+          {' '}약 {Math.ceil(candidate.duration / 60)}분 · {(candidate.distance / 1000).toFixed(1)}km · {record.data_year_end > record.data_year ? '연평균 위험점수' : '위험점수'} {formatRisk(candidate.risk)}</li>)}</ul>
         <p>저장 당시의 결과 요약입니다. 현재 교통상황으로 다시 분석하려면 새 경로를 검색하세요.</p></div>}
     </li>)}</ul>
   </section>

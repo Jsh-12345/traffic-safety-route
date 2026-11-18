@@ -17,5 +17,6 @@ export function restoreHistory(record, snapshot) {
     archived: valid ? snapshot : null,
     safetyLevel: valid ? snapshot.safetyLevel : record.safety_level,
     dataYear: String(record.data_year),
+    endYear: String(record.data_year_end ?? record.data_year),
   }
 }
