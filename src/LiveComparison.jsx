@@ -1,3 +1,4 @@
+import { routeAppearance, routeDrawOrder } from './routeAppearance.js'
 import { canScoreAccidents } from './accidentAvailability.js'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import L from 'leaflet'
@@ -35,13 +36,9 @@ export default function LiveComparison({ route, safetyLevel, archived = null }) 
   const secondCard = recommended.id === fastest.id ? ranked.find(r => r.id !== fastest.id) : recommended
   const hazards = useMemo(() => ready ? [...new Map(ranked.flatMap(r => r.hazards).map(h => [h.id, h])).values()] : [], [ranked, ready])
   const selectedHazard = hazards.find(h => h.id === selectedHazardId)
-  const routeStyles = useMemo(() => {
-    const colors = ['#2563eb', '#087f5b', '#d97706', '#9333ea', '#be185d', '#0891b2']
-    const dashes = [null, '12 6', '3 7', '14 5 3 5']
-    return Object.fromEntries([...ranked].sort((a, b) => a.id.localeCompare(b.id, undefined, { numeric: true })).map((r, i) =>
-      [r.id, { color: colors[i % colors.length], dashArray: dashes[Math.floor(i / colors.length) % dashes.length], weight: 6, opacity: .9 }]))
-  }, [ranked])
-  const routeLabel = r => `후보 ${r.id.replace('route-', '')}${r.id === fastest.id ? ' · 빠른 경로' : ''}${r.id === recommended.id ? ' · 추천' : ''}`
+  const routeStyles = useMemo(() => Object.fromEntries(ranked.map(r =>
+    [r.id, routeAppearance(r.id, recommended.id)])), [ranked, recommended.id])
+  const routeLabel = r => `후보 ${r.id.replace('route-', '')}${r.id === fastest.id ? ' · 빠른 경로' : ''}${r.id === recommended.id ? (ready ? ' · 추천' : ' · 빠른 경로 표시') : ''}`
   const focused = ranked.find(r => r.id === highlightedId) || recommended
   const weights = archived?.weights || RISK_WEIGHTS
   const hazardScore = h => h.accidents * weights.accidents + h.injuries * weights.injuries + h.fatalities * weights.fatalities
@@ -68,20 +65,22 @@ export default function LiveComparison({ route, safetyLevel, archived = null }) 
     const draw = (candidate, options) => {
       if (riskView && candidate.id !== focused.id) options = { ...options, color: '#94a3b8', opacity: .4, weight: 4 }
       const label = document.createElement('span')
-      label.textContent = `후보 ${candidate.id.replace('route-', '')} · ${(candidate.duration / 60).toFixed(1)}분 · ${(candidate.distance / 1000).toFixed(1)}km`
+      label.textContent = `${candidate.id === recommended.id ? (ready ? '추천 경로' : '빠른 경로') : '다른 후보'} · 후보 ${candidate.id.replace('route-', '')} · ${(candidate.duration / 60).toFixed(1)}분 · ${(candidate.distance / 1000).toFixed(1)}km`
       for (const road of candidate.segments || [candidate.points]) L.polyline(road, options)
         .bindTooltip(label).on('click', () => { setSelectedHazardId(null); setHighlightedId(candidate.id) }).addTo(map)
       candidate.points.forEach(p => bounds.extend(p))
     }
-    // 후보별 고유 색상을 유지하고 공유 도로의 좌표는 옮기지 않습니다.
-    ranked.forEach(candidate => {
+    // 다른 후보를 먼저 그립니다. 실제 도로 좌표는 변경하지 않습니다.
+    routeDrawOrder(ranked, recommended.id).forEach(candidate => {
       draw(candidate, routeStyles[candidate.id])
     })
     const highlighted = ranked.find(r => r.id === highlightedId)
     if (highlighted && !riskView) {
       draw(highlighted, { color: '#fff', weight: 11, opacity: .95 })
-      draw(highlighted, { ...routeStyles[highlighted.id], weight: 7, opacity: 1 })
+      draw(highlighted, { ...routeStyles[highlighted.id], weight: highlighted.id === recommended.id ? 8 : 5, opacity: 1 })
     }
+    // 후보를 선택해도 파란색은 항상 현재 추천(자료가 없으면 빠른) 경로를 뜻합니다.
+    if (!riskView) draw(recommended, routeStyles[recommended.id])
     if (riskView) {
       // 선택 경로를 흰 테두리와 근접 구간 색상으로 구분합니다.
       draw(focused, { color: '#fff', weight: 12, opacity: 1 })
@@ -193,9 +192,9 @@ export default function LiveComparison({ route, safetyLevel, archived = null }) 
       </div>
       <div className="candidate-map-legend" aria-label="후보 경로 선택">{ranked.map(r => <button type="button" key={r.id}
         aria-pressed={highlightedId === r.id} onClick={() => selectRoute(highlightedId === r.id ? null : r.id)}>
-        <i style={{ borderColor: routeStyles[r.id].color, borderTopStyle: routeStyles[r.id].dashArray ? 'dashed' : 'solid' }} />{routeLabel(r)}</button>)}</div>
+        <i style={{ borderColor: riskView ? '#94a3b8' : routeStyles[r.id].color, borderTopWidth: riskView ? 4 : routeStyles[r.id].weight, borderTopStyle: routeStyles[r.id].dashArray ? 'dashed' : 'solid' }} />{routeLabel(r)}</button>)}</div>
       {riskView ? <p className="map-view-note"><strong>초록: 수집 자료에서 근접 지역 없음 · 주황: 사고다발지역 반경과 겹침 · 회색: 다른 후보</strong><br />{ready ? '선택 경로의 관련 지역만 표시합니다. 초록색도 안전을 보장하지 않습니다.' : '사고 자료가 없어 경로를 회색으로 표시합니다.'}</p>
-        : <p className="map-view-note">모든 후보를 색상별로 표시합니다. 같은 도로를 지나는 부분은 겹칠 수 있으니 위의 후보 버튼으로 강조해 비교하세요. 빨간 원은 사고다발지역이며, 위험점수가 높을수록 크게 표시합니다.</p>}
+        : <p className="map-view-note" role="status"><strong>파란 굵은 실선: {ready ? '현재 추천 경로' : '빠른 경로 (사고 자료 비교 불가)'} · 초록 얇은 점선: 다른 후보</strong><br />{ready ? '추천 조건을 바꾸면 파란 경로도 추천 결과에 맞춰 갱신됩니다.' : '사고 자료가 없어 이동시간 기준 경로를 파란색으로 표시합니다.'} 같은 도로는 겹칠 수 있으므로 후보 버튼으로 강조해 비교하세요. 빨간 원은 사고 다발지역입니다.</p>}
       <small className="map-scroll-hint">{expanded ? '마우스 휠 또는 + / − 버튼으로 확대·축소하세요.' : '지도 확대·축소는 + / − 버튼을 사용하세요. 크게 보기에서는 마우스 휠도 사용할 수 있습니다.'}</small>
       {selectedHazard && <p className="hazard-selection-notice" role="status">지도에서 강조 중: {selectedHazard.label} · {selectedHazard.typeLabel} · 판정 반경 {selectedHazard.radius}m (회색 점선) <button type="button" onClick={showAllBounds}>강조 해제 · 전체 경로</button></p>}
       {locationMessage && <p role="status" className="location-feedback">{locationMessage}</p>}
@@ -282,3 +281,4 @@ export default function LiveComparison({ route, safetyLevel, archived = null }) 
     </section>
   )
 }
+
