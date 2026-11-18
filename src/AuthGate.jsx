@@ -4,6 +4,20 @@ import './AuthGate.css'
 import { AccessContext } from './AccessContext.js'
 import NicknameSettings from './NicknameSettings.jsx'
 
+function PasswordField({ id, label, value, onChange, autoComplete, minLength, visible, onToggle, describedBy }) {
+  return <div className="auth-password-field">
+    <label htmlFor={id}>{label}</label>
+    <div className="auth-password-input">
+      <input id={id} name={id} type={visible ? 'text' : 'password'} autoComplete={autoComplete}
+        minLength={minLength} required value={value} onChange={onChange} aria-describedby={describedBy}
+        autoCapitalize="none" spellCheck={false} />
+      <button type="button" aria-label={label + (visible ? ' 숨기기' : ' 보기')}
+        aria-controls={id} onClick={onToggle}>{visible ? '숨기기' : '보기'}</button>
+    </div>
+  </div>
+}
+
+
 function AuthGate({ children }) {
   const [session, setSession] = useState(null)
   const [guest, setGuest] = useState(false)
@@ -11,6 +25,11 @@ function AuthGate({ children }) {
   const [mode, setMode] = useState('login')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
+  const [nickname, setNickname] = useState('')
+  const [confirmation, setConfirmation] = useState('')
+  const [showPassword, setShowPassword] = useState(false)
+  const [showConfirmation, setShowConfirmation] = useState(false)
+  const signupMismatch = mode === 'signup' && confirmation !== '' && password !== confirmation
   const [busy, setBusy] = useState(false)
   const [notice, setNotice] = useState('')
 
@@ -33,23 +52,44 @@ function AuthGate({ children }) {
     return () => { active = false; subscription.unsubscribe() }
   }, [])
 
+  const clearPasswords = () => {
+    setPassword('')
+    setConfirmation('')
+    setShowPassword(false)
+    setShowConfirmation(false)
+  }
+
   const switchMode = (nextMode) => {
     setMode(nextMode)
     setNotice('')
-    setPassword('')
+    setNickname('')
+    clearPasswords()
   }
 
   const submit = async (event) => {
     event.preventDefault()
+    const loginNickname = nickname.trim().toLowerCase()
+    if (mode === 'signup') {
+      if (password !== confirmation) {
+        setNotice('비밀번호와 비밀번호 확인이 일치하지 않습니다.')
+        return
+      }
+      if (!/^[a-z0-9가-힣_]{2,20}$/.test(loginNickname)) {
+        setNotice('닉네임은 한글·영문·숫자·밑줄로 2~20자를 입력해 주세요.')
+        return
+      }
+    }
     setBusy(true)
     setNotice('')
+    setShowPassword(false)
+    setShowConfirmation(false)
     try {
       let result
       if (mode === 'signup') {
         result = await supabase.auth.signUp({
-          email,
+          email: email.trim(),
           password,
-          options: { emailRedirectTo: window.location.origin },
+          options: { emailRedirectTo: window.location.origin, data: { signup_nickname: loginNickname } },
         })
       } else if (mode === 'reset') {
         result = await supabase.auth.resetPasswordForEmail(email, {
@@ -70,9 +110,12 @@ function AuthGate({ children }) {
       if (mode === 'signup') setNotice(result.data.session ? '회원가입과 로그인이 완료됐습니다.' : '확인 메일을 보냈습니다. 메일의 링크를 눌러 가입을 완료하세요.')
       if (mode === 'reset') setNotice('비밀번호 재설정 메일을 보냈습니다. 메일함을 확인하세요.')
       if (mode === 'update') { setMode('login'); setNotice('비밀번호를 변경했습니다.') }
-      setPassword('')
+      clearPasswords()
+      if (mode === 'signup') setNickname('')
     } catch (error) {
-      setNotice(error.message || '요청을 처리하지 못했습니다. 다시 시도해 주세요.')
+      setNotice(mode === 'signup' && (error.code === 'unexpected_failure' || /database error saving new user/i.test(error.message))
+        ? '가입하지 못했습니다. 이미 사용 중인 닉네임일 수 있으니 다른 닉네임으로 다시 시도해 주세요. 계속 실패하면 관리자에게 문의해 주세요.'
+        : error.message || '요청을 처리하지 못했습니다. 다시 시도해 주세요.')
     } finally {
       setBusy(false)
     }
@@ -88,6 +131,7 @@ function AuthGate({ children }) {
         <button type="button" onClick={async () => {
           const { error } = await supabase.auth.signOut()
           if (error) setNotice(error.message)
+          else switchMode('login')
         }}>로그아웃</button>
       </div>
       {notice && <p className="auth-toolbar-notice" role="status">{notice}</p>}
@@ -110,21 +154,34 @@ function AuthGate({ children }) {
         {mode !== 'update' && <label>{mode === 'login' ? '이메일 또는 닉네임' : '이메일'}
           <input type={mode === 'login' ? 'text' : 'email'} autoComplete={mode === 'login' ? 'username' : 'email'} required value={email} onChange={event => setEmail(event.target.value)} />
         </label>}
-        {mode !== 'reset' && <label>{mode === 'update' ? '새 비밀번호' : '비밀번호'}
-          <input type="password" autoComplete={mode === 'login' ? 'current-password' : 'new-password'} minLength={6} required value={password} onChange={event => setPassword(event.target.value)} />
+        {mode === 'signup' && <label>로그인 닉네임
+          <input name="nickname" required maxLength={20} autoComplete="nickname" autoCapitalize="none"
+            spellCheck={false} aria-describedby="signup-nickname-help" value={nickname} onChange={event => setNickname(event.target.value)} />
+          <small id="signup-nickname-help" className="auth-field-help">한글·영문·숫자·밑줄 2~20자. 이메일 인증 후 이 닉네임으로 로그인할 수 있어요.</small>
         </label>}
-        <button className="auth-submit" disabled={busy} type="submit">{busy ? '처리 중…' : mode === 'signup' ? '가입하기' : mode === 'reset' ? '재설정 메일 보내기' : mode === 'update' ? '비밀번호 변경' : '로그인'}</button>
+        {mode !== 'reset' && <PasswordField id="password" label={mode === 'update' ? '새 비밀번호' : '비밀번호'}
+          value={password} onChange={event => setPassword(event.target.value)}
+          autoComplete={mode === 'login' ? 'current-password' : 'new-password'} minLength={mode === 'login' ? undefined : 6}
+          visible={showPassword} onToggle={() => setShowPassword(!showPassword)} />}
+        {mode === 'signup' && <>
+          <PasswordField id="password-confirmation" label="비밀번호 확인" value={confirmation}
+            onChange={event => setConfirmation(event.target.value)} autoComplete="new-password"
+            describedBy={signupMismatch ? 'signup-password-mismatch' : undefined}
+            visible={showConfirmation} onToggle={() => setShowConfirmation(!showConfirmation)} />
+          {signupMismatch && <p id="signup-password-mismatch" className="auth-field-error" role="status">비밀번호가 일치하지 않습니다.</p>}
+        </>}
+        <button className="auth-submit" disabled={busy || signupMismatch} type="submit">{busy ? '처리 중…' : mode === 'signup' ? '가입하기' : mode === 'reset' ? '재설정 메일 보내기' : mode === 'update' ? '비밀번호 변경' : '로그인'}</button>
       </form>
       {notice && <p className="auth-notice" role="status">{notice}</p>}
       {mode !== 'update' && <div className="auth-actions">
-        {mode !== 'login' && <button type="button" onClick={() => switchMode('login')}>로그인으로 돌아가기</button>}
+        {mode !== 'login' && <button type="button" disabled={busy} onClick={() => switchMode('login')}>로그인으로 돌아가기</button>}
         {mode === 'login' && <>
-          <button type="button" onClick={() => switchMode('signup')}>회원가입</button>
-          <button type="button" onClick={() => switchMode('reset')}>비밀번호를 잊었나요?</button>
+          <button type="button" disabled={busy} onClick={() => switchMode('signup')}>회원가입</button>
+          <button type="button" disabled={busy} onClick={() => switchMode('reset')}>비밀번호를 잊었나요?</button>
         </>}
       </div>}
       {mode !== 'update' && <div className="guest-entry">
-        <button type="button" className="guest-start" disabled={busy} onClick={() => { setPassword(''); setNotice(''); setGuest(true) }}>비회원으로 시작하기</button>
+        <button type="button" className="guest-start" disabled={busy} onClick={() => { clearPasswords(); setNickname(''); setNotice(''); setGuest(true) }}>비회원으로 시작하기</button>
         <small>로그인 없이 경로를 비교할 수 있습니다. 기록 저장은 로그인 후 이용하세요.</small>
       </div>}
     </section>
