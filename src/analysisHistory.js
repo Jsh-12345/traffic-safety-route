@@ -1,7 +1,7 @@
 import { scoreRouteForPeriod } from './accidentPeriod.js'
 import { canScoreAccidents } from './accidentAvailability.js'
 import { RISK_WEIGHTS } from './riskScore.js'
-import { rankRoutes } from './routeSafety.js'
+import { rankRoutes, ROUTE_SCORE_SCALE } from './routeSafety.js'
 
 export function broadRegion(point) {
   if (point?.region) return String(point.region).slice(0, 60)
@@ -45,7 +45,7 @@ export function makeAnalysisRecord(route, routeType, safetyLevel, userId, dataYe
     accident_data_available: hasAccidents,
     recommended_route: String(ranked[0].id),
     snapshot: saveExactLocation ? JSON.parse(JSON.stringify({ version: 1, route, ranked,
-      safetyLevel: Number(safetyLevel), weights: { ...RISK_WEIGHTS } })) : null,
+      safetyLevel: Number(safetyLevel), weights: { ...RISK_WEIGHTS }, scoreScale: ROUTE_SCORE_SCALE })) : null,
     // 경로선에도 상세 위치가 담기므로 위치 저장 동의가 있는 경우에만 저장합니다.
     candidates: ranked.map(candidate => ({
       id: String(candidate.id),

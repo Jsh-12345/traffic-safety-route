@@ -39,16 +39,15 @@ export function routeBounds(routes, padding = 0.005) {
   }
 }
 
+// 프로젝트의 비교 기준: 50%에서 30분과 위험점수 100점의 기여도가 같습니다.
+export const ROUTE_SCORE_SCALE = Object.freeze({ timeMinutes: 30, riskPoints: 100 })
+
 export function rankRoutes(routes, safetyLevel) {
   const weight = Number(safetyLevel) / 100
   if (!Number.isFinite(weight) || weight < 0 || weight > 1 || !routes.length) throw new Error('추천 조건을 확인하세요.')
-  const times = routes.map(r => r.duration), risks = routes.map(r => r.risk)
-  const minTime = Math.min(...times), maxTime = Math.max(...times)
-  const minRisk = Math.min(...risks), maxRisk = Math.max(...risks)
-  const normalized = (value, min, max) => min === max ? 0 : (value - min) / (max - min)
   return routes.map(r => {
-    const timeNormalized = normalized(r.duration, minTime, maxTime)
-    const riskNormalized = normalized(r.risk, minRisk, maxRisk)
-    return { ...r, timeNormalized, riskNormalized, combined: (1 - weight) * timeNormalized + weight * riskNormalized }
+    const scaledTime = r.duration / (60 * ROUTE_SCORE_SCALE.timeMinutes)
+    const scaledRisk = r.risk / ROUTE_SCORE_SCALE.riskPoints
+    return { ...r, scaledTime, scaledRisk, combined: (1 - weight) * scaledTime + weight * scaledRisk }
   }).sort((a, b) => a.combined - b.combined || a.duration - b.duration || a.risk - b.risk || a.distance - b.distance)
 }

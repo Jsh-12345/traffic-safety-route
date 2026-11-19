@@ -56,13 +56,13 @@ test('hazard near segment midpoint is counted once, distant hazard ignored', () 
   const disconnected = { ...route, segments: [[[36.35, 127.37], [36.35, 127.371]], [[36.35, 127.389], [36.35, 127.39]]] }
   assert.equal(scoreRoute(disconnected, [h]).risk, 0)
 })
-test('0% picks fastest, 100% picks lowest risk, identical risk avoids divide-by-zero', () => {
+test('0% picks fastest, 100% picks lowest risk, identical risk favors the faster candidate', () => {
   const routes = [{ id: 'fast', duration: 600, risk: 40, distance: 2000 }, { id: 'safe', duration: 900, risk: 10, distance: 3000 }]
   assert.equal(rankRoutes(routes, 0)[0].id, 'fast')
   assert.equal(rankRoutes(routes, 100)[0].id, 'safe')
-  assert.equal(rankRoutes(routes, 50)[0].id, 'fast')
+  assert.equal(rankRoutes(routes, 50)[0].id, 'safe')
   assert.equal(rankRoutes(routes.map(r => ({ ...r, risk: 0 })), 100)[0].id, 'fast')
-  assert.equal(rankRoutes([routes[0]], 100)[0].combined, 0)
+  assert.equal(rankRoutes([routes[0]], 100)[0].combined, 0.4)
 })
 test('alternatives are requested, duplicate geometry is removed and fastest is first', async () => {
   const a = { result_code: 0, summary: { distance: 1200, duration: 900 }, sections: [{ roads: [{ vertexes: [127.1, 36.1, 127.2, 36.2] }] }] }

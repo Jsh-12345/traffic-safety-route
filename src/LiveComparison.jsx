@@ -6,7 +6,7 @@ import { canScoreAccidents } from './accidentAvailability.js'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
-import { rankRoutes } from './routeSafety.js'
+import { rankRoutes, ROUTE_SCORE_SCALE } from './routeSafety.js'
 import RiskValue from './RiskValue.jsx'
 import { hazardMarkerRadius } from './hazardMarker.js'
 import { explainRisk } from './riskExplanation.js'
@@ -28,6 +28,7 @@ export default function LiveComparison({ route, safetyLevel, archived = null }) 
   const [locating, setLocating] = useState(false)
   const [locationMessage, setLocationMessage] = useState('')
   const ready = canScoreAccidents(route.accidentData)
+  const scoreScale = archived ? archived.scoreScale : ROUTE_SCORE_SCALE
   const years = route.requestedYears || route.accidentData?.years
   const riskLabel = years?.length > 1 ? '연평균 위험점수' : '위험점수'
   const periodLabel = years?.length ? formatPeriod(years[0], years.at(-1)) : formatPeriod(route.accidentData?.year)
@@ -275,7 +276,11 @@ export default function LiveComparison({ route, safetyLevel, archived = null }) 
         <details className="method-details"><summary>위험점수·종합점수 계산 방법</summary>
           <p>위험점수 = 사고×{weights.accidents} + 부상×{weights.injuries} + 사망×{weights.fatalities}. 같은 지역 자료는 한 경로에서 연도별로 한 번만 합산합니다.</p>
           {years?.length > 1 && <p>연평균 위험점수 = 연도별 위험점수 합계 ÷ {years.length}년. 정상 조회 결과 관련 지역이 없는 해는 0점으로 반영합니다. 같은 장소의 여러 연도 자료는 각각 해당 연도에 반영합니다.</p>}
-          <p>종합점수 = 정규화 시간×(1−안전 가중치) + 정규화 위험점수×안전 가중치. 낮을수록 우선하며 동점이면 짧은 시간을 선택합니다. 가중치는 프로젝트용 임시 기준입니다.</p>
+          {scoreScale ? <>
+            <p>종합점수 = (예상 시간 ÷ {scoreScale.timeMinutes}분) × 시간 비중 + ({riskLabel} ÷ {scoreScale.riskPoints}점) × 안전 비중.</p>
+            <p>안전 비중은 선택한 안전 우선 비율이며, 나머지가 시간 비중입니다. 50%에서는 {scoreScale.timeMinutes}분과 위험점수 {scoreScale.riskPoints}점을 같은 비중으로 비교합니다. 이 수치는 프로젝트의 비교 기준이며, 종합점수의 상한은 아닙니다.</p>
+          </> : <p>이 기록에는 저장 당시의 점수가 표시됩니다. 당시에는 조회한 후보의 최솟값과 최댓값으로 시간과 위험점수를 각각 0~1로 환산했습니다.</p>}
+          <p>종합점수가 낮을수록 우선하며, 동점이면 예상 시간이 짧은 경로를 먼저 선택합니다.</p>
         </details>
         {hazards.length > 0 && <details><summary>관련 사고 다발지역 상세정보 ({hazards.length}개)</summary>
           <p className="hazard-help">지역 이름을 누르면 지도에서 위치를 강조합니다. 점수에 마우스를 올리거나 클릭하면 계산 내역을 볼 수 있습니다.</p>
